@@ -326,3 +326,25 @@ Next design options (in priority order):
 4. PCAPdroid: https://github.com/emanuele-f/pcapdroid (Play Store + GitHub, F-Droid too). No root, works via VPNService, local pcap export.
 
 Delivered so far this round: probe.py (4ee55a1), sweep.py (6f14934). Guides at /home/ubuntu/easy_capture_guide*.md, /home/ubuntu/termux_quickstart.md.
+
+
+## Round 6 continuation — LAN scaffold (commit f8b5c9a)
+
+While waiting for the user's PCAPdroid pcap, built the LAN client scaffold so
+the join implementation can land immediately after capture analysis:
+
+- `sdk/src/milipy/lan/adapter.py` — `LANAdapter` (implements the real
+  `BridgeAdapter` contract over UDP, broadcast discovery stub, reader loop,
+  synthetic hello_ack).
+- `sdk/src/milipy/lan/codec.py` — `MiniMilitiaCodec` with `LANPacket`;
+  `_decode_packet` / `_encode_packet` deliberately raise `NotImplementedError`
+  (honest UNKNOWN gate) with a checklist of the 10 fields that must be filled
+  from PCAP evidence.
+- `sdk/src/milipy/lan/__init__.py` — package exports.
+- `protocol/research/pcap_report.py` — statistics-only pcap report tool
+  (port map, payload clusters, tick-rate inference) labeled OBSERVED/INFERRED.
+- `sdk/tests/test_lan_adapter.py` — 8 tests (fake UDP host, honest gate
+  verification). All 132 SDK tests passing.
+
+User state: in lobby on host phone (192.168.1.128), PCAPdroid installed,
+capture instructions already given. Awaiting .pcap file.
