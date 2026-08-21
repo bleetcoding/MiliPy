@@ -293,3 +293,12 @@ as an ordinary LAN client/player.
 - TODO: README rewrite; docs/roadmap + termux updates; experimental bridge README; docs/report.md + audit-report.md mention? (report.md may be round 3 report — check); commit+push; deliver.
 - Version: SDK 0.3.0 still; protocol.md (bridge protocol, still valid for experimental bridge) unchanged; new lan-protocol-research.md is the LAN doc.
 - Repo: bleetcoding/MiliPy public; gh release v0.3.0 exists w/ APK; old v0.1.0 APK deleted.
+
+
+### Round 6 progress (quickstart + packaging fix)
+- User confirmed TWO phones available — real capture round is feasible. Gave user step-by-step capture plan (idle + tagged action captures via protocol/research/capture.py; upload files back here).
+- BUG FIX (committed 81175b7d336d905a8bd503ddc42fde54181dae7a): editable install was broken in sdk/ — missing sdk/README.md (referenced by pyproject readme=), `license = {text=...}` table deprecated (now `license = "MIT"`), removed deprecated License classifier, fixed wrong Homepage/Documentation URLs (was MiliPy/MiliPy, now bleetcoding/MiliPy). Also removed stale src/milipy.egg-info.
+- Delivered /home/ubuntu/termux_quickstart.md (copy-paste Termux install guide + demo output + first bot script + capture instructions).
+- Verified: fresh venv install → milipy 0.4.0 imports; 124 pytest pass; first_bot.py --simulate runs showing Bot has spawned + enemy positions.
+- Release v0.4.0 created: https://github.com/bleetcoding/MiliPy/releases/tag/v0.4.0 (APK = same v0.3.0 build, notes explain).
+- Pending user action: upload captures (idle/lobby/movement/firing/death/grenade) — next round will analyze per capture.py + analyze.py workflow and start OBSERVED section of protocol/lan-protocol-research.md.
