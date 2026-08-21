@@ -160,7 +160,10 @@ Sent when the handshake completes (either directly, if pairing is disabled, or a
 | `screen` | The capture surface dimensions in pixels. |
 | `session.tick` | Initial tick value. |
 | `session.frame_rate_limit` | Maximum observation frames the bridge will push per second. |
+| `session.transport` | **v0.3.0**: the bridge's runtime transport. `"foreground_service"` means the WebSocket listener is owned by an Android foreground service that survives the UI activity being closed. |
 | `device` | Android device information and game detection status reported by the bridge (informational; fields may be `null` when unavailable). |
+
+**Bridge lifetime (v0.3.0).** The listener is owned by an Android foreground service with a persistent notification, and can be shut down explicitly with the [`stop_bridge` action](#48-session). Capabilities are re-evaluated on every handshake from live runtime state, so `permission_required` reflects the moment the client connected (see §7.1).
 
 ### 2.6 `protocol_error` (bridge → client)
 
@@ -452,6 +455,16 @@ Replied with `{"type": "ack", "request_id": "...", "action": "ping"}`.
 
 Graceful session teardown; the bridge replies with `ack` and closes the WebSocket normally.
 
+```json
+{"type": "action", "id": "action-17", "action": "stop_bridge"}
+```
+
+**Bridge lifetime action (v0.3.0).** Explicit remote shutdown: the bridge replies with `ack`, closes the WebSocket, and then stops its entire foreground service — the listener dies with it, the persistent notification is removed, and the UI reflects the new state. Authorization is the pairing token; no capability gate applies. Equivalent to the **Stop Bridge** action in the bridge's persistent notification. `disconnect` closes only the session; `stop_bridge` closes the whole bridge.
+
+```json
+{"type": "ack", "id": "action-17", "action": "stop_bridge", "status": "accepted"}
+```
+
 ### 4.9 Capture tuning
 
 ```
@@ -494,6 +507,8 @@ Capabilities MAY be reported as rich status objects rather than booleans:
 ```
 
 Valid `state` values are `"available"`, `"unavailable"`, `"permission_required"`, `"unsupported"`, and `"not_validated"`. `"validated_on_device"` is true only after the capability has been proven on a real Mini Militia device (see `docs/device-validation.md`). A boolean value remains valid and is interpreted as `"available"` / `"unavailable"`.
+
+**Runtime evaluation (v0.3.0).** Rich capability states are computed from live Android runtime state on every handshake — never cached from a previous session. In practice: `gesture_input` is `"available"` only while the accessibility service is enabled in system settings *and* bound to the running bridge service; `"permission_required"` while enabled but not yet bound (the transient window right after the user flips the toggle). `screen_capture` is `"available"` only while a live `MediaProjection` session is feeding the virtual display; revocation by the user or the system is reported immediately via the `capture_stopped` event, after which the state becomes `"permission_required"` until consent is granted again. A client that reads the flags once at connect time may see stale values mid-session; the honest source is always the latest handshake or a re-handshake.
 
 
 ## 8. Game session observation (v0.1, honest baseline)

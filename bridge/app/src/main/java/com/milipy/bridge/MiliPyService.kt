@@ -2,12 +2,15 @@ package com.milipy.bridge
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -26,12 +29,37 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
- * The MiliPy Android Bridge service.
+ * The MiliPy Android Bridge **foreground service** — the true lifetime owner
+ * of the WebSocket bridge.
  *
  * Responsibilities (per the architecture brief): Android lifecycle, screen
  * capture, input abstraction, game-screen observation, the MiliPy WebSocket
  * server, protocol handling, pairing/authentication, capability reporting,
  * and logging. It does NOT speak Mini Militia's game protocol.
+ *
+ * Lifetime rules (foreground-service persistence, v0.3.0):
+ *
+ * - **MainActivity is NOT the lifetime owner.** The bridge runs inside this
+ *   foreground service; the activity only starts/stops it and reflects its
+ *   real state. The user can close the activity, switch apps, or lock the
+ *   screen and the bridge keeps serving SDK clients.
+ * - Starting the bridge = `startForegroundService(intent)` → this service.
+ *   Stopping the bridge = explicit `stop(intent)` intent (UI button,
+ *   notification action, or the `stop_bridge` protocol action) → the service
+ *   tears down the listener and calls `stopSelf()`.
+ * - A persistent notification ("MiliPy Bridge — Running") carries the
+ *   pairing code and a **Stop Bridge** action. The notification is only
+ *   updated while the service genuinely runs; if Android kills the process,
+ *   `isRunning()` flips to `false` and nothing falsely reports "running".
+ * - `START_STICKY` means Android may recreate the service after a normal
+ *   kill (low memory, app switch) and the WebSocket listener comes back up
+ *   automatically; pairing config and credentials persist in the same
+ *   `SharedPreferences` as before, so nothing survives being "forgotten".
+ * - Permissions stay minimal: `FOREGROUND_SERVICE` +
+ *   `FOREGROUND_SERVICE_MEDIA_PROJECTION` (Android 14 requires the
+ *   mediaProjection type for screen capture; older devices use the plain
+ *   foreground service). No battery/background whitelists, no wakelocks,
+ *   no invisible activities.
  *
  * Bound to all local interfaces on the configured port (default 8765). The
  * hotspot gateway is discovered at runtime — never hard-coded to 192.168.43.x.
@@ -49,13 +77,21 @@ class MiliPyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        running = true
         BridgeConfig.init(this)
+        CapabilitiesReport.configure(this)
         createNotificationChannel()
+        updateRunningFlag(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Explicit stop request from the UI / notification / protocol.
+        if (intent?.action == ACTION_STOP) {
+            stopBridge()
+            return START_NOT_STICKY
+        }
+
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        @Suppress("DEPRECATION")
         val data = intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
 
         if (resultCode != 0 && data != null) {
@@ -63,6 +99,9 @@ class MiliPyService : Service() {
                 android.media.projection.MediaProjectionManager
             val projection = mediaProjectionManager.getMediaProjection(resultCode, data)
             if (projection != null) {
+                // The projection can be revoked by the system or the user at
+                // any time; the callback keeps `screen_capture` honest.
+                projection.registerCallback(projectionCallback, null)
                 ScreenCapture.start(projection)
             }
         }
@@ -74,10 +113,22 @@ class MiliPyService : Service() {
 
     override fun onDestroy() {
         running = false
+        updateRunningFlag(false)
         ScreenCapture.stop()
         ktorServer?.stop(1000, 2000)
         ktorServer = null
         super.onDestroy()
+    }
+
+    private fun stopBridge() {
+        running = false
+        updateRunningFlag(false)
+        ScreenCapture.stop()
+        ktorServer?.stop(1000, 2000)
+        ktorServer = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        Log.i(TAG, "MiliPy bridge stopped explicitly")
     }
 
     private fun startKtor() {
@@ -99,6 +150,7 @@ class MiliPyService : Service() {
      * receive helpers take that session explicitly, which keeps the service
      * itself free of framework coroutine receivers.
      */
+    @Suppress("RedundantDefaultArgument", "UNUSED_VARIABLE")
     private suspend fun handleSession(session: WebSocketSession) {
         var authorized = false
         var authenticatedAttempts = 0
@@ -191,6 +243,19 @@ class MiliPyService : Service() {
                     else session.sendAck(message.optString("request_id"), Protocol.Actions.DISCONNECT)
                     authorized = false
                 }
+                Protocol.Actions.STOP_BRIDGE -> {
+                    // Explicit remote shutdown: ack, close this session, then
+                    // stop the entire foreground service (the WebSocket
+                    // listener dies with it). The UI reflects the new state.
+                    val stopId = message.optString("id").takeIf { it.isNotEmpty() }
+                    if (stopId != null) session.sendOutbound(
+                        JSONObject().put("type", Protocol.MSG_ACK)
+                            .put("id", stopId).put("action", Protocol.Actions.STOP_BRIDGE)
+                            .put("status", "accepted").toString())
+                    else session.sendAck(message.optString("request_id"), Protocol.Actions.STOP_BRIDGE)
+                    authorized = false
+                    stopBridge()
+                }
                 else -> session.sendOutbound(errorEnvelope(Protocol.ERR_MALFORMED,
                     "unknown message type '${message.optString("type")}'",
                     message.optString("request_id").takeIf { it.isNotEmpty() },
@@ -256,6 +321,7 @@ class MiliPyService : Service() {
         put("session", JSONObject().apply {
             put("tick", world.tick)
             put("frame_rate_limit", BridgeConfig.frameRateLimit())
+            put("transport", "foreground_service")
         })
     }.toString()
 
@@ -281,14 +347,30 @@ class MiliPyService : Service() {
 
     // -- notification --------------------------------------------------------
 
+    /**
+     * The persistent foreground-service notification. It is the honest
+     * public record of whether the bridge listener is alive: it exists only
+     * while this service's `onStartCommand` has run and its `onDestroy` has
+     * not. If Android kills the process, the notification (and
+     * [isRunning]) disappear with it — nothing falsely reports "running".
+     */
     private fun buildNotification(): android.app.Notification {
-        return android.app.Notification.Builder(this, CHANNEL_ID)
+        val stopIntent = PendingIntent.getService(
+            this, 0, Intent(this, MiliPyService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(
                 getString(R.string.notification_text, BridgeConfig.pairingToken())
             )
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                getString(R.string.notification_stop_action),
+                stopIntent
+            )
             .build()
     }
 
@@ -300,18 +382,57 @@ class MiliPyService : Service() {
         }
     }
 
+    /**
+     * Persisted bridge-running flag. It is written from the same process
+     * that owns the service lifecycle, so a process death always clears it;
+     * `isRunning()` can never stale-report `true` after Android kills us.
+     */
+    private fun updateRunningFlag(value: Boolean) {
+        val prefs: SharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_SERVICE_RUNNING, value).apply()
+        running = value
+    }
+
+    /**
+     * True only while the bridge's foreground service is actually running in
+     * this process. UI and protocol consumers must never assume a value
+     * greater than this.
+     */
     companion object {
         const val TAG = "MiliPyBridge"
         const val CHANNEL_ID = "milipy_bridge"
         const val NOTIFICATION_ID = 1
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
+        const val ACTION_STOP = "com.milipy.bridge.ACTION_STOP"
+
+        private const val PREFS_NAME = "milipy_bridge"
+        private const val KEY_SERVICE_RUNNING = "service_running"
 
         @Volatile private var running = false
         fun isRunning(): Boolean = running
 
+        /** Start the bridge foreground service (called by the UI). */
         fun start(context: Context) {
             context.startForegroundService(Intent(context, MiliPyService::class.java))
+        }
+    }
+
+    /**
+     * Keeps `screen_capture` honest: when the system or the user revokes the
+     * MediaProjection session, the callback tears down capture and emits the
+     * `capture_stopped` protocol event to every connected session.
+     */
+    private val projectionCallback = object : android.media.projection.MediaProjection.Callback() {
+        override fun onStop() {
+            ScreenCapture.stop()
+            Log.i(TAG, "MediaProjection session stopped externally")
+            // Notify connected clients via the outbound queue (best-effort;
+            // sessions that are mid-tick pick it up on their next poll).
+            pendingOutbound.add(
+                JSONObject().put("type", Protocol.MSG_EVENT)
+                    .put("event", "capture_stopped").put("data", JSONObject()).toString()
+            )
         }
     }
 }

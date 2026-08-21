@@ -114,6 +114,9 @@ class ActionDispatcher(private val world: WorldState) {
             Protocol.Actions.REQUEST_STATE -> return null // tick loop emits
             Protocol.Actions.PING -> return null
             Protocol.Actions.DISCONNECT -> return null
+            // The actual teardown lives in MiliPyService (foreground service
+            // lifetime): the dispatcher's no-op is only the success path.
+            Protocol.Actions.STOP_BRIDGE -> return null
             // v0.1 unsupported (gated by capabilities):
             Protocol.Actions.THROW_GRENADE, Protocol.Actions.PICKUP,
             Protocol.Actions.SWITCH_WEAPON, Protocol.Actions.CHAT_SEND ->

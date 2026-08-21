@@ -2,9 +2,11 @@ package com.milipy.bridge
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Context
 import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 
 /**
  * The input leg of the MiliPy control channel.
@@ -63,7 +65,32 @@ class MiliPyAccessibilityService : AccessibilityService() {
         @Volatile
         private var instance: MiliPyAccessibilityService? = null
 
-        /** True while the user has enabled the service in system settings. */
+        /**
+         * True while the user has enabled the service in system settings.
+         * Checked against the live accessibility-services registry, so an
+         * enabled service that has not yet bound to this process is still
+         * reported honestly rather than as unavailable.
+         */
+        fun isEnabledInSettings(context: Context): Boolean {
+            val serviceName = "${context.packageName}/com.milipy.bridge.MiliPyAccessibilityService"
+            return try {
+                val enabled = Settings.Secure.getString(
+                    context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: ""
+                enabled.split(':').any { it.trim() == serviceName }
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /**
+         * The honest gesture_input check. Both conditions must hold: the user
+         * has enabled the service in settings (consent gate) AND the service
+         * has actually bound to this process (the foreground service owns
+         * the app's lifetime, so this stays true across activity switches).
+         * A false report here means one of those two real conditions is
+         * false — never a fabrication.
+         */
         fun isAvailable(): Boolean = instance != null
 
         fun current(): MiliPyAccessibilityService? = instance

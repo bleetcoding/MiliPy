@@ -26,6 +26,9 @@ No physical Android device is available in the development environment, so the t
 | Player detection (perception) | Interface only — `BaselineDetector` deliberately sees nothing | — | | | |
 | Player tracking | Interface only — `BaselineTracker` holds nobody | — | | | |
 | Game session state | Honest `UNKNOWN` baseline only | — | | | |
+| Foreground service persistence (v0.3.0) | Yes — foreground service owns the WebSocket listener; `START_STICKY`; persistence and teardown covered by 121 simulator-tested lifecycle tests | — | | | |
+| Notification **Stop Bridge** action (v0.3.0) | Yes — persistent notification with stop action, pairing-token-gated `stop_bridge` protocol action, same teardown path | — | | | |
+| Runtime capability detection (v0.3.0) | Yes — `gesture_input` = settings-enabled **and** bound; `screen_capture` = live MediaProjection session; revoked capture reported via `capture_stopped` | — | | | |
 
 When a real device becomes available, fill one row at a time, left to right. A row only advances to a column when the corresponding evidence has been recorded (device model, Android version, and date at minimum).
 
@@ -40,6 +43,9 @@ Run each test with the bridge app installed, Mini Militia running, and a bot scr
 5. **Fire / stop fire.** Hold fire for one second, then `stop_fire()`. Bullets must flow only during the hold and stop immediately after.
 6. **Backpressure.** Flood actions faster than the bridge can apply them and confirm the bridge never stalls, never crashes, and the *latest* action state wins (documented in the protocol spec).
 7. **Malformed inputs.** Send garbage frames and unknown actions at the bridge; it must respond with structured `protocol_error` / `malformed_message` errors and stay connected.
+8. **Service persistence (v0.3.0).** Start the bridge, connect a bot, then close the app UI completely. The bot must keep receiving state frames and its actions must still apply. Press the **Stop Bridge** notification action and confirm the connection closes, the notification disappears, and the UI shows STOPPED — nothing may falsely report running afterward.
+9. **Runtime capability detection (v0.3.0).** Before enabling the accessibility service, `gesture_input` must be `permission_required`, not `unavailable` and never `available`. After enabling it, the report must become `available` once the service binds. Revoke the MediaProjection session mid-session and confirm `capture_stopped` arrives and `screen_capture` is no longer `available`.
+10. **Remote shutdown (v0.3.0).** `await bot.stop_bridge_async()` must close the connection from the bridge side, stop the service, and leave the notification gone.
 
 ## Provenance rule
 

@@ -39,7 +39,7 @@ from .protocol_schema import PROTOCOL_VERSION
 from .sim import SimAdapter, SimWorld
 from .state import CapabilityStatus, Capabilities, GameSession, GameState, Player, Position, Vector, Weapon
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "Bot",
     "Capabilities",

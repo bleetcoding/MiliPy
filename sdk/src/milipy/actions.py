@@ -184,3 +184,14 @@ class ActionBuilder:
         if isinstance(reason, str):
             payload["reason"] = reason
         return ("disconnect", payload)
+
+    # -- bridge lifetime (v0.3.0) -------------------------------------------
+
+    def stop_bridge(self) -> tuple[str, dict[str, Any]]:
+        """Explicit remote shutdown: stops the bridge foreground service.
+
+        The WebSocket listener dies with the service and the Android UI /
+        notification reflect the new state. Authorization is the pairing
+        token — no capability gate.
+        """
+        return ("stop_bridge", {})

@@ -284,6 +284,18 @@ class Bot:
         await self._adapter.close()
         self._events.emit(SDK_DISCONNECTED, reason=reason)
 
+    async def stop_bridge_async(self) -> None:
+        """Remote-shutdown the bridge foreground service.
+
+        The bridge acknowledges the action, tears down its WebSocket
+        listener, and the Android UI/notification reflect the new state.
+        This closes the session as a side effect — call
+        :meth:`disconnect_async` afterwards if you need cleanup on the SDK
+        side.
+        """
+        name, payload = self._actions.stop_bridge()
+        await self._adapter.send({"type": "action", "action": name, **payload})
+
     # -- action dispatch ----------------------------------------------------
 
     def _dispatch_action(self, name: str, payload: dict[str, Any]) -> None:

@@ -229,6 +229,7 @@ class SimAdapter(BridgeAdapter):
         self._tick_task: asyncio.Task[None] | None = None
         self._seen_ids: set[str] = set()
         self._settings: dict[str, Any] = {"bridge.log_level": "info"}
+        self._bridge_shutting_down = False
 
     @property
     def is_connected(self) -> bool:
@@ -329,6 +330,14 @@ class SimAdapter(BridgeAdapter):
             self._settings[str(payload["key"])] = payload["value"]
         elif action == "ping":
             pass
+        elif action == "stop_bridge":
+            # v0.3.0 lifecycle action: mirrors the real bridge's explicit
+            # foreground-service shutdown — the simulator tears down its
+            # observation loop the same way the real listener dies.
+            self._bridge_shutting_down = True
+            if self._tick_task is not None and not self._tick_task.done():
+                self._tick_task.cancel()
+            self._connected = False
 
 
 class SimFrameSource(FrameSource):

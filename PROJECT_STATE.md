@@ -189,3 +189,65 @@ NEXT:
 4. roadmap.md: note audit additions (coords calibration, perception interfaces, rich caps, action ids, backpressure, validation matrix)
 5. git commit all + push main; verify with gh api repos/bleetcoding/MiliPy/commits/main --jq .sha (watch terminal escape mangling; redirect to file)
 6. Deliver final report: commit hash, repo public, APK URL, tested (116 tests, both builds) vs unverified (real-device everything)
+
+
+## ROUND 4 (current) — Foreground-service persistence + honest capability detection
+### User asks
+- Bridge survives MainActivity leaving foreground: foreground service owns WebSocket server
+- Stop Bridge action in persistent notification ("MiliPy Bridge — Running")
+- No battery-whitelist hacks, no wakelocks, no invisible activities; START_STICKY-style recovery; kill must not falsely report running
+- Keep pairing intact, LAN-only, persist config across restarts, UI reflects real service state
+- FIX capability report: gesture_input=false despite accessibility enabled; screen_capture requires live MediaProjection session; never fabricate
+- Testing: APK build green, existing tests stay green, service lifecycle tests, persistence verification (manual), stop terminates listener, pairing enforced, capability report accurate
+- Do NOT touch Mini Militia perception/gameplay
+### DONE
+- MiliPyService.kt REWRITTEN: foreground service = lifetime owner; ACTION_STOP stop intent; stopBridge() teardown + stopSelf; NotificationCompat with Stop action (PendingIntent immutable, foregroundServiceType mediaProjection already in manifest); START_STICKY; service_running flag in SharedPreferences written in onCreate/onDestroy/stopBridge; MediaProjection.registerCallback → onStop tears down capture + push capture_stopped event; hello_ack adds session.transport="foreground_service"; STOP_BRIDGE action → ack → stopBridge()
+- Protocol.kt: Actions.STOP_BRIDGE added + ACTION_CAPABILITIES registration (null)
+### TODO remaining
+1. CapabilitiesReport.kt: gesture_input runtime check (accessibility service enabled via ENABLED_ACCESSIBILITY_SERVICES + instance isConnected) → state=permission_required when not enabled; screen_capture gated on live virtualDisplay + projection session
+2. MiliPyAccessibilityService.kt: track isConnected flag for isAvailable()
+3. MainActivity.kt: add Stop button (enabled when isRunning), refreshStatus uses isRunning
+4. strings.xml: notification_stop_action "Stop Bridge"
+5. SDK: protocol_schema.py add stop_bridge action spec; actions.py stop_bridge() builder; bot.py bot.stop_bridge()?; protocol.md add stop_bridge + persistence section
+6. tests: new test file for stop_bridge lifecycle (sim-based)
+7. Bump versions: SDK __init__ 0.3.0, CLIENT_VERSION 0.3.0, BRIDGE_VERSION 0.3.0, versionName 0.3.0 versionCode 3; README v0.3.0 note; docs update (testing.md, android-compatibility.md, device-validation.md matrix note, new docs/service-persistence.md)
+8. APK build + SDK pytest green + republish release (asset id 523146192 delete, upload new; consider release v0.3.0 tag)
+9. Commit/push via bash -c one-liner; deliver commit hash + tested-vs-unverified report
+### Commands
+- SDK: cd /home/ubuntu/milipy/sdk && python3 -m pytest -q
+- APK: cd /home/ubuntu/milipy/bridge && export ANDROID_HOME=$HOME/android-sdk && source ~/.sdkman/bin/sdkman-init.sh && sdk use gradle 8.9 && gradle assembleDebug
+- gh: GH_TOKEN set; release v0.1.0 asset 523146192
+### Honesty facts for final report
+- foreground service: IMPLEMENTED, NOT mechanism-tested on real device (no device in sandbox)
+- STOP_BRIDGE: IMPLEMENTED + simulated tests pass
+- gesture_input false on user's device root cause: service instance was transient (activity-owned) → killed when app backgrounded; foreground service fixes lifetime; runtime isConnected check improves detection
+
+## ROUND 4 progress snapshot (before context compaction)
+DONE so far in round 4:
+- MiliPyService.kt fully rewritten (foreground service lifetime, stopBridge, ACTION_STOP, notification Stop action, SharedPreferences running flag, MediaProjection callback, transport field in hello_ack, stop_bridge handling, start() helper) — BUILDS GREEN (BUILD SUCCESSFUL, no warnings/errors)
+- Protocol.kt: Actions.STOP_BRIDGE + ACTION_CAPABILITIES null
+- CapabilitiesReport.kt rewritten: richAll() with "permission_required" state, configure(context), gesture_input = settings-enabled AND bound, screen_capture = live session; new capability "stop_bridge" true
+- MiliPyAccessibilityService.kt: isEnabledInSettings(context) via Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+- MainActivity.kt: stop button, start triggers createScreenCaptureIntent startActivityForResult, refreshStatus shows 3 lines, start/stop buttons enabled correctly
+- activity_main.xml: stop_button added
+- strings.xml: notification_stop_action "Stop Bridge"
+- ActionDispatcher.kt: stop_bridge no-op registered
+- actions.py: stop_bridge() builder
+- protocol_schema.py: "stop_bridge" ActionSpec(None, (), (), {})
+- bot.py: stop_bridge_async()
+- sim.py: stop_bridge handling in SimAdapter (_bridge_shutting_down flag, cancel tick, _connected=False)
+- tests/test_service_lifecycle.py NEW: 5 tests (spec, builder, sim teardown w/ action id, bot dispatch, real WS shutdown fixture) — 121 tests pass total
+- docs/service-persistence.md NEW (v0.3.0 persistence + honest capability doc)
+- protocol.md: §4.8 stop_bridge action documented
+STILL TO DO:
+1. protocol.md: add § on bridge lifetime/persistence (new section near §1 or §10) + note rich capability state "permission_required" in §7.1
+2. Bump versions: SDK __init__ 0.2.0→0.3.0; protocol.py CLIENT_VERSION 0.3.0; Protocol.kt BRIDGE_VERSION 0.3.0 (was 0.1.0); build.gradle.kts versionName 0.3.0 versionCode 3
+3. README.md: add v0.3.0 note (foreground service persistence + honest runtime capability detection + stop_bridge), link docs/service-persistence.md, test count 121, APK release link
+4. docs/testing.md: add persistence verification steps + notification stop + stop_bridge action tests; update accessibility expectation line
+5. docs/device-validation.md: add matrix rows (service persistence, notification stop, runtime capability detection) as empty/unverified
+6. examples/first_bot.py: optionally note --simulate unchanged; maybe no change needed
+7. APK rebuild (already green before version bump; rebuild after bump)
+8. pytest final + CI file check (ci.yml mentions test counts? check)
+9. Delete gh release asset 523146192 (release v0.1.0); create release v0.3.0 tag, upload APK
+10. Commit+push via bash -c; deliver commit hash + tested-vs-unverified report
+Repo: /home/ubuntu/milipy (main branch, user bleetcoding). APK: bridge/app/build/outputs/apk/debug/app-debug.apk

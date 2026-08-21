@@ -186,6 +186,9 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     # Session
     "ping": ActionSpec(None, (), (), {}),
     "disconnect": ActionSpec(None, ("reason",), (), {}),
+    # Bridge lifetime (v0.3.0): explicit remote shutdown of the foreground
+    # service. Pairing-token-gated; no capability gate.
+    "stop_bridge": ActionSpec(None, (), (), {}),
 }
 
 # ---------------------------------------------------------------------------

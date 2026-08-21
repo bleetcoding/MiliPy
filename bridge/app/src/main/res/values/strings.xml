@@ -4,4 +4,5 @@
     <string name="accessibility_description">MiliPy Bridge uses this service to perform touch gestures (movement, aiming, firing) on your behalf. You must enable it explicitly; it does not read your screen content beyond capturing the display for observation.</string>
     <string name="notification_title">MiliPy Bridge running</string>
     <string name="notification_text">Serving MiliPy SDK clients on the local network. Pairing code: %s</string>
+    <string name="notification_stop_action">Stop Bridge</string>
 </resources>

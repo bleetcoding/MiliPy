@@ -110,15 +110,17 @@ Termux / bot device ── on the same LAN ──▶ MiliPy SDK
 The SDK ships a simulator that implements the bridge protocol in memory, so the entire bot API can be exercised offline:
 
 ```bash
-cd sdk && python3 -m pytest   # 116 tests
+cd sdk && python3 -m pytest   # 121 tests
 python3 tests/smoke.py        # end-to-end demo against SimAdapter
 ```
 
 Version **0.2.0** adds the protocol v1.1 extension (action ids with structured `ack` replies and `status: accepted|rejected`, rich capability states distinguishing *available* from *unavailable* mechanisms), coordinate calibration across screen and game spaces (`milipy.coords`), perception-architecture interfaces (`FrameSource` → `PerceptionProvider` → `GameStateProvider` with an honest baseline that never fabricates detections), and per-device frame-rate / JPEG-quality tuning with latest-frame backpressure.
 
+Version **0.3.0** makes the bridge a **foreground service** that owns the WebSocket listener for the app's entire lifetime — closing the UI no longer kills the bridge, and a persistent **"MiliPy Bridge — Running"** notification offers an explicit **Stop Bridge** action. Remote shutdown is also available as the `stop_bridge` protocol action (`await bot.stop_bridge_async()`). Capability flags are now re-evaluated from live runtime state on every handshake: `gesture_input` requires the accessibility service to be enabled *and* bound, `screen_capture` requires a live MediaProjection session, and a revoked capture session is reported immediately through the `capture_stopped` event. See [`docs/service-persistence.md`](docs/service-persistence.md) for the full design.
+
 ## Docs and roadmap
 
-See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec (v1.1), [`docs/termux.md`](docs/termux.md) for installing and running the SDK in Termux on Android, [`docs/device-validation.md`](docs/device-validation.md) for the validation matrix and what still needs real-device verification, [`docs/android-compatibility.md`](docs/android-compatibility.md) for platform requirements and OEM limitations, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan. The debug bridge APK is attached to the [v0.1.0 release](https://github.com/bleetcoding/MiliPy/releases).
+See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec (v1.1), [`docs/termux.md`](docs/termux.md) for installing and running the SDK in Termux on Android, [`docs/device-validation.md`](docs/device-validation.md) for the validation matrix and what still needs real-device verification, [`docs/android-compatibility.md`](docs/android-compatibility.md) for platform requirements and OEM limitations, [`docs/service-persistence.md`](docs/service-persistence.md) for the v0.3.0 foreground-service lifetime, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan. The debug bridge APK is attached to the [v0.1.0 release](https://github.com/bleetcoding/MiliPy/releases).
 
 ## License
 

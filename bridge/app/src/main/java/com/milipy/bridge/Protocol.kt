@@ -14,8 +14,8 @@ package com.milipy.bridge
 object Protocol {
     const val VERSION = 1
     const val CLIENT_ID = "milipy"
-    const val CLIENT_VERSION = "0.1.0"
-    const val BRIDGE_VERSION = "0.1.0"
+    const val CLIENT_VERSION = "0.3.0"
+    const val BRIDGE_VERSION = "0.3.0"
 
     const val DEFAULT_PORT = 8765
     const val PAIRING_TOKEN_LENGTH = 6
@@ -58,6 +58,13 @@ object Protocol {
         const val REQUEST_STATE = "request_state"
         const val PING = "ping"
         const val DISCONNECT = "disconnect"
+        /**
+         * Explicit remote shutdown (v0.3.0): stops the entire foreground
+         * service — the WebSocket listener dies with it, and the UI /
+         * notification reflect the new state. Requires no capability; the
+         * pairing token is the authorization gate for every session.
+         */
+        const val STOP_BRIDGE = "stop_bridge"
     }
 
     val VALID_DIRECTIONS = setOf("left", "right", "up", "down")
@@ -84,6 +91,7 @@ object Protocol {
         Actions.REQUEST_STATE to null,
         Actions.PING to null,
         Actions.DISCONNECT to null,
+        Actions.STOP_BRIDGE to null,
     )
 
     const val ERR_MALFORMED = "malformed_message"
