@@ -110,13 +110,15 @@ Termux / bot device ── on the same LAN ──▶ MiliPy SDK
 The SDK ships a simulator that implements the bridge protocol in memory, so the entire bot API can be exercised offline:
 
 ```bash
-cd sdk && python3 -m pytest   # 84 tests
+cd sdk && python3 -m pytest   # 116 tests
 python3 tests/smoke.py        # end-to-end demo against SimAdapter
 ```
 
+Version **0.2.0** adds the protocol v1.1 extension (action ids with structured `ack` replies and `status: accepted|rejected`, rich capability states distinguishing *available* from *unavailable* mechanisms), coordinate calibration across screen and game spaces (`milipy.coords`), perception-architecture interfaces (`FrameSource` → `PerceptionProvider` → `GameStateProvider` with an honest baseline that never fabricates detections), and per-device frame-rate / JPEG-quality tuning with latest-frame backpressure.
+
 ## Docs and roadmap
 
-See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec, [`docs/termux.md`](docs/termux.md) for installing and running the SDK in Termux on Android, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan.
+See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec (v1.1), [`docs/termux.md`](docs/termux.md) for installing and running the SDK in Termux on Android, [`docs/device-validation.md`](docs/device-validation.md) for the validation matrix and what still needs real-device verification, [`docs/android-compatibility.md`](docs/android-compatibility.md) for platform requirements and OEM limitations, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan. The debug bridge APK is attached to the [v0.1.0 release](https://github.com/bleetcoding/MiliPy/releases).
 
 ## License
 
