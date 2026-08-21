@@ -2,119 +2,125 @@
 
 ## What MiliPy is
 
-MiliPy is a programmable control/observation framework for a **normal, unmodified Mini Militia Android client**, mediated by a local Android bridge app. It is deliberately not a replacement Mini Militia server, not a fake network client, and not an RL agent. The game retains full responsibility for LAN discovery, lobbies, game networking, rules, and match lifecycle. MiliPy is responsible for observation, player state, input, actions, events, and automation logic.
-
-## Two completely separate networking concepts
-
-MiliPy operates over two networking layers that must never be conflated.
-
-### 1. Mini Militia LAN networking (not ours)
-
-Mini Militia's multiplayer uses a Wi-Fi/LAN lobby workflow: one device hosts a hotspot, other devices join the hotspot, and the game discovers and joins lobbies itself. MiliPy does not implement, emulate, reverse-engineer, or manipulate any part of this protocol. The user performs the ordinary workflow by hand:
+MiliPy is a **Mineflayer-style standalone Mini Militia client**. The Python process
+runs entirely from Termux and speaks the **Mini Militia LAN multiplayer protocol
+directly**, appearing on the network as an ordinary LAN client/player — no phone,
+no screen capture, no injected automation is required for the core bot.
 
 ```
-Host device:      enable hotspot → launch Mini Militia → host LAN game
-Other devices:    connect to hotspot → launch Mini Militia → join lobby
+Termux
+  |
+  | Python MiliPy
+  | Mini Militia LAN protocol (UDP)
+  v
+Mini Militia LAN host
 ```
 
-### 2. MiliPy control networking (ours)
+MiliPy is deliberately **not** an RL agent, not a fake network client that pretends
+to work, and not a screen-automation wrapper. The design goal is the same one
+Mineflayer achieves for Minecraft: a high-level, event-driven bot API built on a
+faithful implementation of the game's real network protocol, with a
+server-authoritative world model that only reflects what the host actually sends.
 
-MiliPy's own, fully documented WebSocket protocol runs on top of the same local network but connects only Python-to-bridge:
+## Two components, clearly separated
 
-```
-Python MiliPy SDK
-        ↕  WebSocket (port 8765 by default)
-MiliPy Android Bridge
-        ↕  Android observation/input layer
-Mini Militia application
-```
+| Component | Path | Status |
+|---|---|---|
+| **Core LAN client** (the bot) | `sdk/src/milipy/` | **Primary.** Mineflayer-like Bot + the protocol research layer |
+| **Android bridge** (screen automation) | `experimental/bridge/` | **Optional, experimental.** Kept from earlier rounds; not required by the core bot |
 
-The bridge controls and observes the Mini Militia application exclusively through legitimate Android mechanisms — `MediaProjection` for screen capture and the Accessibility Service `dispatchGesture()` API for input — each behind an explicit user consent flow.
+The core bot talks to Mini Militia hosts. The Android bridge automates a real
+Android screen via `MediaProjection` + Accessibility Service and remains available
+for users who prefer observation-of-a-screen over protocol-level play. The two are
+never mixed: a Bot instance targets the LAN protocol; the bridge has its own
+WebSocket protocol (see `protocol/protocol.md`).
 
-## The `host` parameter
+## The Mineflayer pattern MiliPy follows
+
+Mineflayer ([PrismarineJS/mineflayer](https://github.com/PrismarineJS/mineflayer))
+creates Minecraft bots that connect directly to a Minecraft server and speak the
+real Minecraft protocol, indistinguishable from a normal client at the wire level.
+Its architecture has four layers, and MiliPy mirrors them:
+
+| Mineflayer layer | Role | MiliPy equivalent |
+|---|---|---|
+| `node-minecraft-protocol` | packet parsing/serialization, keep-alive, encryption | `milipy.lan` (packet codec — built from captures) |
+| `minecraft-data` | per-version packet definitions | `milipy.lan.packets` (definitions — built from captures) |
+| `prismarine-*` (entity, world, physics…) | domain objects fed by incoming packets | `milipy` state models (`Player`, `Weapon`, `GameState`) |
+| `mineflayer` Bot | event-driven high-level API over the models | `milipy.Bot` (existing event core, retargeted) |
+
+The bot API mirrors the requested Mineflayer shape:
 
 ```python
-bot = Bot(host="192.168.43.1", port=8765)
+from milipy import Bot
+
+bot = Bot("192.168.1.x")
+
+bot.on("spawn", on_spawn)
+bot.on("player_join", on_join)
+bot.on("player_leave", on_leave)
+
+bot.connect()
+bot.join_lobby()
+
+target = bot.nearest_enemy()
+bot.aim_at(target)
+bot.fire()
+
+bot.disconnect()
 ```
 
-The `host` argument is the address of the **MiliPy Android Bridge**, never the Mini Militia game server. MiliPy never exposes a function such as `connect_to_mini_militia_game_server()`. Calling `bot.connect()` is a *MiliPy Bridge connection*.
+## Protocol honesty model
 
-## Both supported topologies
+Mini Militia has **no published LAN protocol documentation**, and no public
+implementation was found anywhere (searched August 2026). Therefore MiliPy adopts a
+four-level certainty model, enforced in code:
 
-The MiliPy-controlled device may be either the Mini Militia host or a Mini Militia client that joins a host's LAN lobby. Neither topology is hard-coded; the bridge simply binds to all local interfaces on its port.
-
-**Topology A — bridge on the host phone:**
-
-```
-Host Phone
-├── Android Wi-Fi hotspot
-├── Mini Militia (LAN host)
-└── MiliPy Bridge (port 8765)
-
-Termux / bot device (on the same LAN)
-└── Python MiliPy SDK ──────▶ 192.168.43.1:8765
-```
-
-**Topology B — bridge on a client phone:**
-
-```
-Host Phone
-├── Android Wi-Fi hotspot
-└── Mini Militia (LAN host)
-
-Client Phone (on hotspot)
-├── Mini Militia (client, joined the lobby)
-└── MiliPy Bridge (port 8765)
-
-Termux / bot device (on the same LAN)
-└── Python MiliPy SDK ──────▶ <client-phone-IP>:8765
-```
-
-For the first working prototype, Topology B is usually technically easier because the bridge phone only needs to *join* a hotspot rather than host one, and its IP is simply whatever the hotspot DHCP assigns. Topology A remains equally valid once the bridge can run as a background service on the host device.
-
-## Android bridge responsibilities
-
-The Kotlin bridge is responsible for Android lifecycle, screen capture, input abstraction, game-screen observation, the MiliPy WebSocket server, protocol handling, pairing/authentication, capability reporting, and logging. It is explicitly **not** responsible for pretending to be a Mini Militia server.
-
-| Responsibility | Mechanism |
+| Level | Meaning |
 |---|---|
-| Android lifecycle | Foreground `Service` with notification |
-| Screen capture | `MediaProjectionManager.createScreenCaptureIntent()` → `MediaProjection.createVirtualDisplay()` → `ImageReader`, user consented |
-| Input | `AccessibilityService.dispatchGesture()` (taps, swipes, sustained drags) — user must enable the service in system settings |
-| WebSocket server | Ktor CIO, bound to `0.0.0.0:8765` |
-| Protocol | JSON envelopes per `protocol/protocol.md` |
-| Pairing | Displayed 6-character token, constant-time comparison, per-connection |
-| Capabilities | Honest flags in `hello_ack` — `screen_capture` true only while a projection is active; `gesture_input` true only while the accessibility service is enabled |
+| **KNOWN** | Established by multiple independent public sources |
+| **OBSERVED** | Captured by MiliPy's own framework against a real LAN host |
+| **INFERRED** | A hypothesis that has NOT been tested — never trusted by the codec |
+| **UNKNOWN** | No evidence — the research framework exists to fill these |
 
-## Capability honesty
+The research document is [`protocol/lan-protocol-research.md`](../protocol/lan-protocol-research.md).
+The capture/replay framework (`protocol/research/capture.py`, `analyze.py`,
+`replay.py`) turns UNKNOWN into OBSERVED: capture real traffic while performing
+tagged in-game actions, run structure probes, and validate every decoding
+hypothesis with a send/receive round-trip against the real game. **No packet
+format is fabricated**, and Mini Militia protocol support is never claimed until a
+capture round-trip against a real LAN host has succeeded.
 
-Every feature that cannot currently be backed by a legitimate mechanism is reported as unavailable and raises `CapabilityError` on use. Version 0.1's honest baseline:
+## What is KNOWN so far (public sources)
 
-| Capability | Baseline |
-|---|---|
-| `screen_capture` | Available when MediaProjection consent was granted |
-| `gesture_input` | Available when the user enabled the accessibility service |
-| `player_tracking`, `chat`, `grenades`, `pickup`, `weapon_switch` | Unavailable — will raise `CapabilityError` until a perception layer exists |
-| `settings_read`, `settings_write` | Available for bridge settings only (game settings untouched) |
+Mini Militia — Doodle Army 2 LAN multiplayer runs over a local Wi-Fi network (a
+phone hotspot with everyone joined), needs no internet, uses a **host–client
+topology** where one player's phone hosts the game session, and uses **UDP** for
+gameplay traffic. The host phone runs the session authoritatively, exactly like a
+game server. The game's official online servers shut down in 2024, so LAN play is
+the only surviving multiplayer mode. All packet-level details — discovery,
+handshake, join, spawn, state sync, movement, aim, weapons, fire, projectiles,
+damage, chat, disconnect — remain undocumented and are classified UNKNOWN until
+captured.
 
-## Game session state
+## The core Bot
 
-The bridge and SDK model the visible game session with a small state enum: `NO_GAME`, `GAME_DETECTED`, `MAIN_MENU`, `LAN_MENU`, `LOBBY_VISIBLE`, `IN_LOBBY`, `IN_GAME`, `GAME_OVER`, and `UNKNOWN`. Version 0.1 reports `UNKNOWN` everywhere. This is intentional: the states will only become truthful once a perception layer (image analysis of the captured frames) can actually distinguish them. The abstraction exists now so future detection work plugs into a defined surface instead of inventing one.
+The core Bot keeps the event-driven design from earlier rounds (`on`/`once`/`emit`,
+async-friendly, capability gates on unsupported actions) but its target changes:
 
-LAN lobby discovery (`bot.lan_lobbies` / `bot.game.lobby`) will only ever be added if the bridge can legitimately obtain it from the application's visible UI or state — never by querying Mini Militia's internal LAN mechanism.
+- `connect()` performs the Mini Militia LAN handshake when the protocol is known —
+  until then it raises `CapabilityError` and points at the research document.
+- `join_lobby()`, `spawn`/`player_join`/`player_leave` events, `nearest_enemy()`,
+  `aim_at()`, `fire()` all exist as the stable API surface; they dispatch through
+  the LAN packet codec once packets are validated.
+- A simulator (`SimAdapter`) remains for testing the bot's logic offline, and is
+  explicitly labeled a stand-in — simulator tests are never counted as Mini
+  Militia interoperability.
 
-## The vertical slice (first real integration test)
+## Verification discipline
 
-1. Android device enables its hotspot (Topology A) or joins one (Topology B).
-2. Mini Militia starts normally; host or client joins the LAN lobby normally.
-3. The MiliPy Bridge is started on the controlled device.
-4. Termux on the same local network connects to the MiliPy Bridge.
-5. The bridge reports its connection status, Android device information, capabilities, and game detection status.
-6. MiliPy receives a screen observation.
-7. MiliPy sends a supported action; the bridge performs it through a legitimate Android mechanism; the result is visible.
-
-Steps 4–7 are exercised offline by the SDK's `SimAdapter` simulator and its 84 tests; steps 1–3 happen on real hardware and are documented in [`testing.md`](testing.md).
-
-## Engineering rule
-
-Whenever a capability cannot currently be implemented legitimately: research → determine the limitation → design the abstraction → mark it unsupported → continue implementing everything else. Nothing prints success for work that was not done.
+Nothing in the core claims game interoperability without a recorded pcap showing
+the round-trip. The honest workflow for every new message type is: capture →
+tag the in-game action → probe → hypothesize → round-trip validate → only then
+move the claim from OBSERVED toward "supported". Until that pipeline produces
+results, the core SDK is a ready API with an honest UNKNOWN codec.

@@ -251,3 +251,45 @@ STILL TO DO:
 9. Delete gh release asset 523146192 (release v0.1.0); create release v0.3.0 tag, upload APK
 10. Commit+push via bash -c; deliver commit hash + tested-vs-unverified report
 Repo: /home/ubuntu/milipy (main branch, user bleetcoding). APK: bridge/app/build/outputs/apk/debug/app-debug.apk
+
+
+## Round 5 (Aug 2026) — ARCHITECTURE CORRECTION: standalone LAN client
+
+User corrected the project direction: MiliPy is NOT primarily an Android
+screen-control bot. It is a Mineflayer-like STANDALONE Mini Militia LAN client:
+Python on Termux speaks the Mini Militia LAN protocol directly; the bot appears
+as an ordinary LAN client/player.
+
+- Android bridge (accessibility/MediaProjection/WebSocket) stays in bridge/ as
+  an OPTIONAL EXPERIMENTAL component; it is NOT required by the core bot.
+  Must be clearly separated in docs/README/architecture.
+- Core stack to build (round 5+):
+  * Protocol research layer: protocol/lan-protocol-research.md
+    (certainty model KNOWN/OBSERVED/INFERRED/UNKNOWN; OBSERVED empty for now)
+  * Capture framework: protocol/research/{capture,analyze,replay}.py
+  * Mineflayer architecture notes: protocol/research/mineflayer-notes.md
+  * Bot retarget: mineflayer-like API (spawn, player_join, player_leave,
+    nearest_enemy, aim_at, fire, connect, join_lobby, disconnect)
+- Mineflayer key facts: node-minecraft-protocol packet layer + minecraft-data
+  per-version definitions + prismarine-* world/entity modules + event-driven
+  Bot; server-authoritative world model; plugins add higher-level verbs.
+- MM LAN knowns: host-client topology (host phone runs session), local Wi-Fi /
+  hotspot only, UDP gameplay transport per public sources, online servers dead
+  (2024), NO public packet documentation exists anywhere.
+- RULE: never fabricate packet formats; never claim MM protocol support until
+  capture round-trip against a real LAN host succeeds.
+- TODO round 5: rewrite architecture.md + README, split bridge to experimental/,
+  restructure Bot core skeleton, commit+push, report.
+
+
+### Round 5 progress (working)
+- DONE: protocol/research/{mineflayer-notes,mm_lan_protocol-notes}.md + capture.py/analyze.py/replay.py written (capture tool syntax-verified, no real MM traffic in sandbox).
+- DONE: bridge/ moved to experimental/bridge/ (git rename detected). .gitignore + CI (bridge-experimental job, cd experimental/bridge) updated.
+- DONE: docs/{android-compatibility,service-persistence,device-validation,testing}.md moved to experimental/docs/. Remaining docs/: architecture.md(rewritten), audit-report.md, report.md, roadmap.md, termux.md.
+- DONE: docs/architecture.md fully rewritten — standalone LAN client, two-component table (core vs experimental bridge), Mineflayer layer table, honesty model, KNOWN facts, Bot API.
+- DONE: bot.py docstring retargeted (host = MM LAN host), new honest gate in _async_connect: Bot(raw host string) raises CapabilityError until LAN codec OBSERVED; adapter path unchanged.
+- DONE: sdk __init__.py docstring rewritten with honesty model.
+- DONE: tests/test_lan_gate.py (3 tests) — 124 tests passing total.
+- TODO: README rewrite; docs/roadmap + termux updates; experimental bridge README; docs/report.md + audit-report.md mention? (report.md may be round 3 report — check); commit+push; deliver.
+- Version: SDK 0.3.0 still; protocol.md (bridge protocol, still valid for experimental bridge) unchanged; new lan-protocol-research.md is the LAN doc.
+- Repo: bleetcoding/MiliPy public; gh release v0.3.0 exists w/ APK; old v0.1.0 APK deleted.

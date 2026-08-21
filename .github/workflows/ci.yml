@@ -15,11 +15,11 @@ jobs:
           python-version: "3.11"
       - run: pip install -e sdk
       - run: cd sdk && python3 -m pytest
-      - run: python3 examples/first_bot.py --simulate
+      - run: python3 -u examples/first_bot.py --simulate
         # Runs for a few seconds against the simulator to prove the full
         # bot experience works offline.
 
-  bridge:
+  bridge-experimental:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +29,6 @@ jobs:
           java-version: "21"
       - uses: android-actions/setup-android@v3
       - run: |
-          cd bridge
+          cd experimental/bridge
           ./gradlew assembleDebug lintDebug
           ls app/build/outputs/apk/debug/app-debug.apk

@@ -6,7 +6,7 @@ The Python SDK ships an in-memory simulator (`SimAdapter`) that implements the f
 
 ```bash
 cd sdk
-python3 -m pytest          # 121 tests covering protocol, events, state, actions, calibration, perception, service lifecycle
+python3 -m pytest          # 124 tests covering protocol, events, state, actions, calibration, perception, service lifecycle
 python3 tests/smoke.py     # live end-to-end demo against the simulator
 ```
 

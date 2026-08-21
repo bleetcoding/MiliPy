@@ -1,18 +1,24 @@
 """MiliPy — a Mineflayer-inspired automation framework for Mini Militia.
 
-MiliPy is a programmable control/observation framework for a *normal* Mini
-Militia Android client, working through a local Kotlin Android bridge.
+MiliPy is a Mineflayer-style standalone client whose core target is the
+**Mini Militia LAN multiplayer protocol** itself: the Python process runs
+entirely from Termux and appears on the local network as an ordinary LAN
+client/player of a Mini Militia LAN host (see
+``protocol/lan-protocol-research.md``).
 
-Two separate networking layers exist and must not be confused:
+Protocol honesty model — every wire-format claim is tagged:
 
-- **Mini Militia LAN networking** — handled entirely by the game itself
-  (hotspot, LAN lobby, matchmaking). MiliPy neither implements nor replaces it.
-- **MiliPy control networking** — the Python SDK talks only to the MiliPy
-  Android Bridge over a versioned local WebSocket. The ``Bot``'s ``host``
-  parameter is the bridge's address, never the game's.
+- **KNOWN** — established by multiple independent public sources
+- **OBSERVED** — captured by MiliPy's own framework against a real host
+- **INFERRED** — an untested hypothesis, never trusted by the codec
+- **UNKNOWN** — no evidence; the capture/replay framework fills these gaps
 
-The SDK exposes player state, movement, aiming, weapons, combat actions,
-player tracking, events, chat, and settings on top of that bridge connection.
+Until LAN packet formats have been validated by capture round-trips, the
+core codec is ``UNKNOWN`` and ``Bot("<host>")`` raises ``CapabilityError``
+rather than fabricating support. The bot can still be driven offline by
+``SimAdapter`` (a labeled stand-in) or by the optional **experimental
+Android bridge** (``experimental/bridge/`` — screen automation kept from
+earlier rounds).
 
 Example::
 
@@ -39,7 +45,7 @@ from .protocol_schema import PROTOCOL_VERSION
 from .sim import SimAdapter, SimWorld
 from .state import CapabilityStatus, Capabilities, GameSession, GameState, Player, Position, Vector, Weapon
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "Bot",
     "Capabilities",

@@ -102,22 +102,32 @@ class SettingsAPI:
 
 
 class Bot:
-    """The central MiliPy bot object.
+    """The central MiliPy bot object — a Mineflayer-style standalone client.
+
+    The core MiliPy design targets the **Mini Militia LAN multiplayer protocol**
+    directly: ``host`` is the address of the Mini Militia LAN host, and the bot
+    appears as an ordinary LAN client/player (``protocol/lan-protocol-research.md``
+    documents the research status; see ``docs/architecture.md``).
 
     Parameters:
-        host_or_adapter: A bridge host address (string) or a
+        host_or_adapter: A Mini Militia LAN host address (string) or a
             :class:`~milipy.transport.BridgeAdapter` instance (such as the
-            simulator's ``SimAdapter``). Passing an adapter is how tests and
-            demos run without a real device.
+            simulator's ``SimAdapter`` or the optional experimental Android
+            bridge adapter). Passing an adapter is how tests and demos run
+            without a real LAN host.
 
-            **Important:** ``host`` is the network address of the *MiliPy
-            Android Bridge* — the Kotlin app running on the controlled
-            Android device — **not** the Mini Militia game server. Mini
-            Militia's LAN lobby networking is handled by the game itself;
-            MiliPy only talks to its own bridge over WebSocket.
-        port: WebSocket port of the MiliPy bridge (default ``8765``).
-        pairing_token: Pairing code displayed by the bridge UI. May also be
-            supplied via the ``MILIPY_PAIRING`` environment variable.
+            Until the LAN packet codec is validated against a real host,
+            connecting to a LAN host address raises ``CapabilityError`` — the
+            codec is honestly ``UNKNOWN`` (no packet format is fabricated).
+            To drive the bot against a real Android device, pass the
+            experimental Android bridge adapter or the simulator instead.
+        port: Protocol port (default ``8765`` — the bridge's default when an
+            adapter is used; the Mini Militia LAN port is discovered during
+            protocol research).
+        pairing_token: Credential for the handshake (pairing code when using
+            the bridge adapter; the Mini Militia LAN session token once the
+            protocol is known). May also be supplied via the ``MILIPY_PAIRING``
+            environment variable.
     """
 
     def __init__(
@@ -233,6 +243,19 @@ class Bot:
         await self._async_connect(pairing_token or self._pairing_token)
 
     async def _async_connect(self, token: str | None) -> None:
+        if isinstance(self._adapter, WebSocketAdapter):
+            # Honest gate: the Mini Militia LAN packet codec is still UNKNOWN
+            # (no captures validated yet). Connecting to a raw host address
+            # would fabricate protocol support. The bot must be driven by an
+            # explicit adapter (SimAdapter or the experimental bridge) until
+            # protocol/research captures promote the codec to OBSERVED.
+            raise CapabilityError(
+                "unsupported_capability",
+                "The Mini Militia LAN protocol is not yet implemented — no packet "
+                "format has been validated (see protocol/lan-protocol-research.md). "
+                "Pass an explicit adapter (SimAdapter, or the experimental Android "
+                "bridge adapter) until LAN captures promote the codec to OBSERVED.",
+            )
         try:
             ack = await self._adapter.connect(self._handle_frame, token)
         except Exception as exc:  # noqa: BLE001

@@ -1,27 +1,60 @@
 # MiliPy Roadmap
 
-The roadmap grows capability-by-capability, each time behind an honest capability flag, per the project's core engineering rule. Version numbers describe maturity, not promises.
+The roadmap grows capability-by-capability, each step behind the project's
+honesty model (`KNOWN` / `OBSERVED` / `INFERRED` / `UNKNOWN`) and its
+capability gates. Version numbers describe maturity, not promises.
 
-## v0.1 — current (foundation)
+The core project is a **Mineflayer-style standalone Mini Militia LAN client**:
+the Python bot speaks Mini Militia's LAN multiplayer protocol directly from
+Termux and appears as an ordinary LAN client/player. The Android screen-
+automation bridge is retained as an optional, experimental component
+(`experimental/bridge/`) while the LAN client becomes the primary path.
 
-Local bridge, versioned WebSocket protocol, Python SDK, Termux support, simulator, screen observation, and the initial input abstraction (movement holds, jump, crouch, aim, fire, punch) are all implemented and tested offline. Publication to GitHub completes this milestone.
+## Current — research foundation (v0.3)
 
-## v0.2 — perception
+The Mineflayer-style Bot API (`on("spawn")`, `on("player_join")`,
+`nearest_enemy()`, `aim_at()`, `fire()`, `connect()` / `join_lobby()` /
+`disconnect()`), the honesty-gated codec (connecting to a raw LAN host raises
+`CapabilityError` until packet formats are validated), the simulator
+(labeled stand-in for offline testing), and the protocol research layer
+(`protocol/lan-protocol-research.md` plus the capture/replay framework in
+`protocol/research/`) are all implemented and tested offline.
 
-A perception layer analyzes captured frames so the bridge can report `GAME_DETECTED`, `MAIN_MENU`, `LAN_MENU`, `LOBBY_VISIBLE`, `IN_LOBBY`, `IN_GAME`, and `GAME_OVER` truthfully. Player detection and tracking follow, which unblocks a real `bot.nearest_enemy()` that sees players on screen rather than only in simulation. Movement and aim APIs gain calibration so actions map accurately to each device.
+## Next — packet capture and discovery
 
-## v0.3 — combat actions
+The first real interoperability milestone. Capture LAN traffic while performing
+tagged in-game actions, identify the host's discovery port and any broadcast
+mechanism, and promote the discovery/lobby areas from `UNKNOWN` toward
+`OBSERVED` (see the capture steps A–G in the research document).
 
-Firing accuracy, weapon switching, pickup, grenade, and punch move from `CapabilityError` to backed implementations, gated on the perception layer knowing where weapons, grenades, and enemies are on screen.
+## Then — handshake, lobby join, and spawn
 
-## v0.4 — metagame
+With discovery in hand, decode the host/client handshake, lobby join, player
+identity/session, and spawn messages, validate each by send/receive
+round-trip against a real Mini Militia LAN host, and let the simulator's
+`spawn` / `player_join` / `player_leave` events map to the real protocol's
+events. The first `Bot("192.168.43.x").connect()` against a real host is the
+project's defining moment — it is only claimed after the pcap proves it.
 
-Player statistics, chat, settings round-trip for game-visible settings, and a richer event vocabulary (kill, death, respawn, lobby change) once the perception layer can read the relevant UI regions.
+## Then — gameplay state and combat
 
-## v0.5 — platform
+Player state synchronization, position/movement, aim/orientation, weapon
+selection, fire/actions, projectile and grenade events, and damage/death state
+follow the same capture → probe → round-trip discipline. Chat is included if
+the protocol exposes it; if captures show no chat channel exists, the honest
+answer is that it does not.
 
-A stable protocol contract, a plugin architecture for reusable behaviors, integration testing against a hardware matrix, and documentation refresh. The protocol gains a formal compatibility policy before any external consumers are encouraged.
+## v1.0 — standalone client
 
-## v1.0 — stability
+Declaring 1.0 happens only after the Bot connects, joins, plays, and
+disconnects cleanly against real Mini Militia LAN hosts across multiple game
+versions, devices, and both hotspot topologies, with every message type backed
+by recorded captures and passing replay tests. No artificial timeline.
 
-Declaring 1.0 happens only after the API and bridge have proven stable on real devices across multiple Mini Militia versions and both network topologies. No artificial timeline.
+## About the experimental bridge
+
+The Android bridge retains its own roadmap (perception layer, combat actions,
+metagame, platform stability) but is explicitly optional: it automates a
+screen rather than speaking the game protocol, and nothing in the core bot
+depends on it. Contributions may pursue either path; the core client is the
+primary project direction.

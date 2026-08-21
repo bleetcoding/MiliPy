@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "milipy"
-version = "0.3.0"
+version = "0.4.0"
 description = "An open-source, Mineflayer-inspired automation framework for interacting with Mini Militia through a local Android bridge."
 readme = "README.md"
 license = {text = "MIT"}

@@ -1,10 +1,19 @@
 # Running MiliPy in Termux
 
-This guide walks through installing the MiliPy Python SDK in Termux on Android, connecting to a MiliPy Bridge, and running the example bot. It ends with the single-phone setup, where the bridge and the bot run on the same device.
+This guide walks through installing the MiliPy Python SDK in Termux on Android,
+running the offline tests and simulator demo, and participating in the LAN
+protocol research effort. The **core MiliPy bot is a standalone Mini Militia LAN
+client** — the Python process runs entirely in Termux and appears as an ordinary
+LAN client/player of a Mini Militia LAN host. The Android bridge is now an
+optional, experimental component (see [`architecture.md`](architecture.md)).
 
 ## Prerequisites
 
-You need Termux installed (from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub releases](https://github.com/termux/termux-app/releases) — avoid the Play Store version, which is unmaintained) and Android 9 or newer. The SDK requires Python 3.10 or later; current Termux ships Python 3.11/3.12, so no pinning is needed.
+You need Termux installed (from [F-Droid](https://f-droid.org/packages/com.termux/)
+or [GitHub releases](https://github.com/termux/termux-app/releases) — avoid the
+Play Store version, which is unmaintained) and Android 9 or newer. The SDK
+requires Python 3.10 or later; current Termux ships Python 3.11/3.12, so no
+pinning is needed.
 
 ## Install
 
@@ -18,7 +27,9 @@ cd ~/MiliPy
 pip install -e sdk
 ```
 
-The `pip install -e sdk` step installs the `milipy` package in editable mode from the repository you just cloned. Optionally, run the offline test suite to confirm everything works before connecting to a real bridge:
+The `pip install -e sdk` step installs the `milipy` package in editable mode from
+the repository you just cloned. Optionally, run the offline test suite to confirm
+everything works:
 
 ```bash
 pip install pytest pytest-asyncio
@@ -26,67 +37,83 @@ cd sdk && python3 -m pytest
 python3 ../examples/first_bot.py --simulate
 ```
 
-## Connect to a bridge
+## Current state of the LAN protocol
 
-The bot needs a running MiliPy Bridge somewhere on a reachable network. There are three common arrangements.
+**Mini Militia has no published LAN protocol documentation, and no public
+implementation exists.** That is why `Bot("192.168.43.1")` currently raises
+`CapabilityError` with a pointer to `protocol/lan-protocol-research.md`: the LAN
+codec is honestly `UNKNOWN`, and MiliPy refuses to fabricate packet formats.
 
-### Arrangement 1: Bridge on the same phone (simplest)
-
-Install `app-debug.apk` on your own phone, start the bridge, and connect to it over localhost:
+The path to real interoperability is the capture/replay framework in
+`protocol/research/`. If you have two devices that can play Mini Militia LAN
+together (a host phone on a hotspot plus any device on that hotspot), you can
+help turn `UNKNOWN` into `OBSERVED`:
 
 ```bash
-export MILIPY_HOST=127.0.0.1
+# 1. On any Termux device on the LAN, capture UDP traffic while a tagged
+#    action is performed in-game (see protocol/lan-protocol-research.md §4):
+python3 ~/MiliPy/protocol/research/capture.py \
+    --iface wlan0 --duration 60 --tag "joined lobby" --out ~/captures/join
+
+# 2. Run structure probes on the capture (purely statistical; decodes nothing):
+python3 ~/MiliPy/protocol/research/analyze.py ~/captures/join.jsonl
+
+# 3. Optionally port-sweep the host to find candidate discovery ports:
+python3 ~/MiliPy/protocol/research/analyze.py --sweep 192.168.43.1 44300-44320
+```
+
+Every capture run is tagged with the exact in-game action performed during the
+window, and every decoding hypothesis must later pass a send/receive
+round-trip against the real game before MiliPy treats it as supported.
+
+## Using the experimental Android bridge (optional)
+
+The earlier screen-automation bridge still exists under `experimental/bridge/`
+(APK at the GitHub release). It is **not required** for the core bot. If you want
+to drive the bot through it while the LAN protocol is being researched, use the
+environment variables it expects:
+
+```bash
+export MILIPY_HOST=192.168.1.37   # or 127.0.0.1 when on the same phone
 export MILIPY_PORT=8765
 export MILIPY_PAIRING=<code shown in the bridge app>
-python3 ~/MiliPy/examples/first_bot.py
 ```
 
-### Arrangement 2: Bridge on another phone on the same Wi-Fi
-
-Start the bridge on the other phone and point the bot at its LAN IP, which the bridge app shows in its notification. Keep both devices on the same Wi-Fi network:
-
-```bash
-export MILIPY_HOST=192.168.1.37
-export MILIPY_PORT=8765
-export MILIPY_PAIRING=<code shown in the bridge app>
-python3 ~/MiliPy/examples/first_bot.py
-```
-
-### Arrangement 3: Bridge on the hotspot host (LAN-game topology)
-
-If the bridge phone is also the Mini Militia LAN host, it enables the hotspot and the Termux device (a second phone or a laptop) connects to that hotspot. The hotspot gateway is typically `192.168.43.1`, but discover it properly with `ip route`:
-
-```bash
-ip route | awk '/default/ {print $3}'   # prints the gateway, e.g. 192.168.43.1
-export MILIPY_HOST=$(ip route | awk '/default/ {print $3}')
-export MILIPY_PORT=8765
-export MILIPY_PAIRING=<code>
-python3 ~/MiliPy/examples/first_bot.py
-```
+Install `experimental/bridge/.../app-debug.apk` on the controlled phone, start
+the bridge, and run the example as before. Note that connecting with a host
+string goes through the same honest gate as the LAN path — pass a `SimAdapter`
+or the bridge adapter object to `Bot(...)` instead, since the bridge is a
+separate component with its own adapter, not the Mini Militia host.
 
 ## What to expect
 
-On a successful connection you should see `Bot has spawned`, followed by `Game session:` lines and repeated enemy sightings with positions. Every accepted action receives an `ack` from the bridge. If you get `ConnectionRefusedError`, the bridge is not running or the IP is wrong; if you get `auth_error: invalid_token`, re-copy the pairing code from the bridge app.
+With `--simulate` you see `Bot has spawned`, game-session lines, and repeated
+enemy sightings — all generated by the in-process simulator (labeled stand-in,
+never counted as Mini Militia interoperability). With a real bridge adapter you
+see bridge `ack`s for accepted actions. With a real Mini Militia LAN capture,
+you see raw packets and statistics — and eventually, once the round-trip is
+validated, a genuine `spawn` event from the game itself.
 
 ## Keeping the bot running
 
-Termux sessions are killed when the app is backgrounded unless you take one of these steps. For quick tests, just keep Termux visible. For longer runs, acquire a partial wake lock:
+Termux sessions are killed when the app is backgrounded unless you take one of
+these steps. For quick tests, just keep Termux visible. For longer runs, acquire
+a partial wake lock:
 
 ```bash
 pkg install termux-api
 termux-wake-lock
 ```
 
-Then run the bot as usual. Release the lock with `termux-wake-unlock` when finished.
+Release the lock with `termux-wake-unlock` when finished.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
 | `pkg: command not found` | You are not actually in Termux, or `proot`/`chroot` is misconfigured |
-| `pip: command not found` | Install python first: `pkg install python`; then use `python3 -m pip install -e sdk` |
-| `ModuleNotFoundError: websockets` | Run `python3 -m pip install websockets`; if compilation fails, `pkg install python-pip build-essential` first |
-| `ConnectionRefusedError` | Bridge not started, or Termux and the bridge are on different networks (e.g., cellular vs. Wi-Fi) |
-| `auth_error: invalid_token` | The pairing code changed or was copied with whitespace; the bridge rotates it on restart |
-| Actions raise `CapabilityError` | Enable the bridge's accessibility service and grant MediaProjection capture consent |
+| `pip: command not found` | Install python first: `pkg install python`; then `python3 -m pip install -e sdk` |
+| `ModuleNotFoundError: websockets` | Run `python3 -m pip install websockets`; if compilation fails, `pkg install build-essential` first |
+| `CapabilityError: ...not yet implemented` | Expected — the LAN codec is not validated yet. Run a capture round instead, or use `--simulate` / the experimental bridge adapter |
+| `ConnectionRefusedError` | Nothing is listening at that address; check `ip route` for the correct gateway, or that the bridge is running |
 | Python older than 3.10 | Update packages (`pkg upgrade`) — current Termux always ships a new enough Python |
