@@ -92,3 +92,11 @@ Then: phase 6 docs (README with architecture/topologies, architecture.md, docs/t
 - Tests for Kotlin: kotlinc not installed; validate via `./gradlew compileDebugJavaWithJavac`-equivalent; better run `./gradlew assembleDebug` which compiles everything. Optional lint.
 - After bridge compiles: Phase 6 docs+examples+repo metadata, Phase 7 push to GitHub "MiliPy" + final report.
 - Python side fully done (84 tests green, smoke green).
+
+
+## Follow-up task (user request): make repo public + Termux run guide
+- Repo bleetcoding/MiliPy made PUBLIC via `gh repo edit --visibility public --accept-visibility-change-consequences` — verified: `"private": false`. URL: https://github.com/bleetcoding/MiliPy
+- SDK deps: websockets>=12.0 (import websockets.asyncio.client), requires-python >=3.10, setuptools wheel. Dev deps: pytest, pytest-asyncio, ruff. These are all plain pip packages, installable in Termux (`pkg install python` then pip install).
+- Termux notes for guide: Termux python 3.10+ (check current: python3.11/3.12); pkg install python git clang build-essential (websockets has C dep? it uses no C ext, pure wheels mostly fine); use `pkg install python-websockets` OR pip install websockets; recommend pip. git clone into $HOME; cd milipy && pip install -e sdk.
+- Real-network run: bridge runs on same phone or another phone; on same phone localhost 127.0.0.1:8765 works (bridge binds 0.0.0.0). Pairing token from app UI. env vars: MILIPY_HOST, MILIPY_PORT, MILIPY_PAIRING.
+- Still to do: (1) write docs/termux.md guide, (2) mention in README, (3) commit+push, (4) deliver instructions to user.

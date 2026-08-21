@@ -116,7 +116,7 @@ python3 tests/smoke.py        # end-to-end demo against SimAdapter
 
 ## Docs and roadmap
 
-See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan.
+See [`docs/architecture.md`](docs/architecture.md) for the two-networking separation, [`protocol/protocol.md`](protocol/protocol.md) for the wire spec, [`docs/termux.md`](docs/termux.md) for installing and running the SDK in Termux on Android, and [`docs/roadmap.md`](docs/roadmap.md) for the v0.2–v1.0 plan.
 
 ## License
 
