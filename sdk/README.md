@@ -1,27 +1,3 @@
-Metadata-Version: 2.4
-Name: milipy
-Version: 0.4.0
-Summary: A Mineflayer-style standalone client for Mini Militia, running entirely from Termux over the LAN protocol.
-Author: MiliPy contributors
-License-Expression: MIT
-Project-URL: Homepage, https://github.com/bleetcoding/MiliPy
-Project-URL: Documentation, https://github.com/bleetcoding/MiliPy/tree/main/docs
-Keywords: mini-militia,game-bot,lan-client,termux,mineflayer
-Classifier: Development Status :: 3 - Alpha
-Classifier: Intended Audience :: Developers
-Classifier: Programming Language :: Python :: 3
-Classifier: Programming Language :: Python :: 3.10
-Classifier: Programming Language :: Python :: 3.11
-Classifier: Programming Language :: Python :: 3.12
-Classifier: Topic :: Software Development :: Libraries
-Requires-Python: >=3.10
-Description-Content-Type: text/markdown
-Requires-Dist: websockets>=12.0
-Provides-Extra: dev
-Requires-Dist: pytest>=8.0; extra == "dev"
-Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
-Requires-Dist: ruff>=0.4; extra == "dev"
-
 # milipy — Python SDK
 
 The Python package behind [MiliPy](https://github.com/bleetcoding/MiliPy), a Mineflayer-style standalone client for Mini Militia that runs entirely from Termux.

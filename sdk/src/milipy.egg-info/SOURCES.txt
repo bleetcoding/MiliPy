@@ -1,8 +1,11 @@
+README.md
 pyproject.toml
 src/milipy/__init__.py
 src/milipy/actions.py
 src/milipy/bot.py
+src/milipy/coords.py
 src/milipy/events.py
+src/milipy/perception.py
 src/milipy/protocol.py
 src/milipy/protocol_schema.py
 src/milipy/sim.py
@@ -13,3 +16,10 @@ src/milipy.egg-info/SOURCES.txt
 src/milipy.egg-info/dependency_links.txt
 src/milipy.egg-info/requires.txt
 src/milipy.egg-info/top_level.txt
+tests/test_coords.py
+tests/test_lan_gate.py
+tests/test_perception.py
+tests/test_protocol.py
+tests/test_service_lifecycle.py
+tests/test_sim_bot.py
+tests/test_state_events.py

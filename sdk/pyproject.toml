@@ -5,18 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "milipy"
 version = "0.4.0"
-description = "An open-source, Mineflayer-inspired automation framework for interacting with Mini Militia through a local Android bridge."
+description = "A Mineflayer-style standalone client for Mini Militia, running entirely from Termux over the LAN protocol."
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.10"
 authors = [
     {name = "MiliPy contributors"},
 ]
-keywords = ["mini-militia", "game-automation", "bot", "android", "websocket"]
+keywords = ["mini-militia", "game-bot", "lan-client", "termux", "mineflayer"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -35,8 +34,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/MiliPy/MiliPy"
-Documentation = "https://github.com/MiliPy/MiliPy/tree/main/docs"
+Homepage = "https://github.com/bleetcoding/MiliPy"
+Documentation = "https://github.com/bleetcoding/MiliPy/tree/main/docs"
 
 [tool.setuptools.packages.find]
 where = ["src"]
