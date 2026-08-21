@@ -44,7 +44,7 @@ from .protocol_schema import (
     SCREEN_REF_HEIGHT,
     SCREEN_REF_WIDTH,
 )
-from .state import Position, Vector
+from .state import GameSession, Position, Vector
 
 logger = logging.getLogger("milipy.sim")
 
@@ -159,6 +159,7 @@ class SimWorld:
             "timestamp_ms": int(time.time() * 1000),
             "player": self_player,
             "screen": {"width": self.width, "height": self.height},
+            "game_session": GameSession.UNKNOWN.value,
         }
         if include_frame:
             payload["frame"] = {

@@ -56,7 +56,7 @@ from .protocol_schema import (
     SDK_STATE_UPDATE,
     SDK_TICK,
 )
-from .state import Capabilities, GameState, Player, parse_player
+from .state import Capabilities, GameSession, GameState, Player, parse_player
 from .transport import BridgeAdapter, WebSocketAdapter
 
 logger = logging.getLogger("milipy.bot")
@@ -109,7 +109,13 @@ class Bot:
             :class:`~milipy.transport.BridgeAdapter` instance (such as the
             simulator's ``SimAdapter``). Passing an adapter is how tests and
             demos run without a real device.
-        port: WebSocket port of the bridge (default ``8765``).
+
+            **Important:** ``host`` is the network address of the *MiliPy
+            Android Bridge* — the Kotlin app running on the controlled
+            Android device — **not** the Mini Militia game server. Mini
+            Militia's LAN lobby networking is handled by the game itself;
+            MiliPy only talks to its own bridge over WebSocket.
+        port: WebSocket port of the MiliPy bridge (default ``8765``).
         pairing_token: Pairing code displayed by the bridge UI. May also be
             supplied via the ``MILIPY_PAIRING`` environment variable.
     """
@@ -168,6 +174,19 @@ class Bot:
     def state(self) -> GameState:
         """A fresh snapshot of the current world state."""
         return self._state.snapshot()
+
+    @property
+    def game_session(self) -> GameSession | None:
+        """Current high-level game session state reported by the bridge.
+
+        ``None`` until the first observation includes it. The bridge reports
+        ``UNKNOWN`` whenever it cannot legitimately determine the screen, and
+        only reports concrete states (``MAIN_MENU``, ``LAN_MENU``,
+        ``LOBBY_VISIBLE``, ``IN_LOBBY``, ``IN_GAME``, ``GAME_OVER``,
+        ``NONE``) once the perception layer actually supports detecting
+        them.
+        """
+        return self._state.game_session
 
     @property
     def is_connected(self) -> bool:
@@ -430,6 +449,12 @@ class Bot:
         snapshot = self._state.snapshot()
         snapshot.tick = tick
         snapshot.frame = frame
+        if "game_session" in message and isinstance(message["game_session"], str):
+            try:
+                self._state.game_session = GameSession(message["game_session"])
+                snapshot.game_session = self._state.game_session
+            except ValueError:
+                logger.warning("Unknown game_session value: %s", message["game_session"])
         self._state.tick = tick
         self._events.emit(SDK_TICK, state=snapshot)
         self._events.emit(SDK_STATE_UPDATE, state=snapshot)

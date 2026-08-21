@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+
+# Android / Gradle
+bridge/.gradle/
+bridge/app/build/
+bridge/build/
+bridge/local.properties
+bridge/captures/
+*.apk
+*.aab
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Project
+PROJECT_STATE.md

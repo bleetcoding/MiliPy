@@ -9,6 +9,40 @@
 
 The MiliPy Bridge Protocol governs all communication between the Python MiliPy SDK (the *client*) and the Kotlin MiliPy Android Bridge (the *server*). Communication is bidirectional, event-driven, and strictly local: the bridge binds to a hotspot interface, and the client connects over the local network. No cloud services, external APIs, or Internet connectivity are involved.
 
+### 1.1 Two networking layers — what this protocol is and is not
+
+MiliPy deliberately separates two completely different networking concepts, and this protocol covers **only the second one**:
+
+| Layer | Owner | Scope |
+|-------|-------|-------|
+| Mini Militia LAN networking | The Mini Militia game itself | Hotspot creation, LAN lobby discovery, matchmaking, game rules, match lifecycle |
+| MiliPy control networking | MiliPy (this protocol) | WebSocket link between the Python SDK and the Kotlin Android bridge |
+
+The bridge observes and controls a *normal, unmodified* Mini Militia Android client through legitimate Android mechanisms (screen capture and accessibility/input dispatch). MiliPy does **not** implement, replace, or reverse-engineer Mini Militia's LAN game protocol. The `host` address used by the SDK refers to the **MiliPy Android Bridge**, never to a Mini Militia game server. LAN lobbies may eventually be *observed* through the visible UI (e.g. `bot.lan_lobbies`), but never queried from game-internal state.
+
+### 1.2 Deployment topologies
+
+The MiliPy-controlled device may be either the Mini Militia LAN host or a client that joins the host's lobby; the SDK must not assume either:
+
+**Topology A — bridge on the host phone:**
+
+```
+Host Phone                Termux / bot machine
+├── Wi-Fi hotspot         └── MiliPy SDK
+├── Mini Militia (host)
+└── MiliPy Bridge ──► (connects over the hotspot)
+```
+
+**Topology B — bridge on a client phone:**
+
+```
+Host Phone                Client Phone          Termux / bot machine
+├── Wi-Fi hotspot         ├── MiliPy Bridge     └── MiliPy SDK
+└── Mini Militia (host)   └── Mini Militia (client)
+```
+
+The end-to-end vertical slice is: hotspot on → Mini Militia running and in a LAN lobby (handled by the game) → bridge running → SDK connected to the bridge → screen observation received → supported action dispatched → result visible on the device.
+
 All messages are UTF-8 encoded JSON objects with a mandatory top-level `type` field. Unknown message types and unknown fields MUST be ignored gracefully by both sides. A `request_id` MAY be included on request/response pairs; if omitted, the response is fire-and-forget.
 
 ### Coordinate system
@@ -106,6 +140,12 @@ Sent when the handshake completes (either directly, if pairing is disabled, or a
     "height": 720,
     "density": 2.0
   },
+  "device": {
+    "model": "Pixel 6",
+    "os_version": "13",
+    "bridge": "0.1.0",
+    "game_detected": true
+  },
   "session": {
     "tick": 0,
     "frame_rate_limit": 10
@@ -120,6 +160,7 @@ Sent when the handshake completes (either directly, if pairing is disabled, or a
 | `screen` | The capture surface dimensions in pixels. |
 | `session.tick` | Initial tick value. |
 | `session.frame_rate_limit` | Maximum observation frames the bridge will push per second. |
+| `device` | Android device information and game detection status reported by the bridge (informational; fields may be `null` when unavailable). |
 
 ### 2.6 `protocol_error` (bridge → client)
 
@@ -161,11 +202,14 @@ The primary periodic observation. The bridge pushes these at up to `frame_rate_l
   "meta": {
     "source": "screen_capture",
     "confidence": null
-  }
+  },
+  "game_session": "in_game"
 }
 ```
 
 `frame` is omitted when `capabilities.screen_capture` is `false` or when the client disabled frames via `set_capture` (see §4.2). Fields whose value cannot be observed are `null`, never invented.
+
+`game_session` is the bridge's best legitimate observation of the game's high-level session state. Until the perception layer supports fine-grained detection, the bridge MUST report `"unknown"`; once detection is implemented it reports one of: `"none"` (Mini Militia not running), `"main_menu"`, `"lan_menu"`, `"lobby_visible"`, `"in_lobby"`, `"in_game"`, `"game_over"`. The SDK treats any unrecognized value as unknown.
 
 ### 3.2 `event`
 
@@ -426,6 +470,10 @@ The bridge binds by default to the local interface and requires a pairing code b
 
 Protocol version `1` covers all message types defined here. Adding a message type, adding optional fields, or widening an enum value is a *backwards-compatible* change that does not bump the major protocol version. Removing a type, changing required field semantics, or renaming fields requires a new major version, announced through `protocol_error` with the `supported` list.
 
-## 8. Design rationale
+## 8. Game session observation (v0.1, honest baseline)
+
+The bridge reports a single `game_session` string in every `state` message. The honest v0.1 baseline is `"unknown"`: the bridge does not pretend to detect screen states it cannot. Roadmap (v0.2+) perception work may narrow this to the enum defined in §3.1. A future `game_session_changed` event will be added when detection becomes reliable enough to emit discrete transitions.
+
+## 9. Design rationale
 
 WebSocket was chosen over raw TCP sockets or HTTP polling because actions (Python → Android) and observations (Android → Python) both need low-latency, persistent, bidirectional transport over local Wi-Fi, and both ecosystems ship mature WebSocket implementations (`websockets` for Python, Ktor for Kotlin). JSON was chosen over a binary format for v0.1 to keep debugging trivial on Termux; a compact binary variant can be negotiated in a future protocol version without changing the transport.

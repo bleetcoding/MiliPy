@@ -1,9 +1,18 @@
 """MiliPy — a Mineflayer-inspired automation framework for Mini Militia.
 
-MiliPy provides a programmable Python bot API for player state, movement,
-aiming, weapons, combat actions, player tracking, events, chat, and settings,
-communicating with a Kotlin Android bridge over a versioned local WebSocket
-protocol.
+MiliPy is a programmable control/observation framework for a *normal* Mini
+Militia Android client, working through a local Kotlin Android bridge.
+
+Two separate networking layers exist and must not be confused:
+
+- **Mini Militia LAN networking** — handled entirely by the game itself
+  (hotspot, LAN lobby, matchmaking). MiliPy neither implements nor replaces it.
+- **MiliPy control networking** — the Python SDK talks only to the MiliPy
+  Android Bridge over a versioned local WebSocket. The ``Bot``'s ``host``
+  parameter is the bridge's address, never the game's.
+
+The SDK exposes player state, movement, aiming, weapons, combat actions,
+player tracking, events, chat, and settings on top of that bridge connection.
 
 Example::
 
@@ -27,7 +36,8 @@ from .bot import Bot
 from .events import EventEmitter
 from .protocol import CapabilityError, ProtocolError
 from .protocol_schema import PROTOCOL_VERSION
-from .state import Capabilities, GameState, Player, Position, Vector, Weapon
+from .sim import SimAdapter, SimWorld
+from .state import Capabilities, GameSession, GameState, Player, Position, Vector, Weapon
 
 __version__ = "0.1.0"
 __all__ = [
@@ -35,11 +45,14 @@ __all__ = [
     "Capabilities",
     "CapabilityError",
     "EventEmitter",
+    "GameSession",
     "GameState",
     "Player",
     "Position",
     "ProtocolError",
     "PROTOCOL_VERSION",
+    "SimAdapter",
+    "SimWorld",
     "Vector",
     "Weapon",
 ]

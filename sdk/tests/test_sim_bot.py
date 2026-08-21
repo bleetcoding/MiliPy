@@ -13,7 +13,7 @@ from milipy import Bot
 from milipy.protocol import CapabilityError
 from milipy.protocol_schema import ACTION_SPECS
 from milipy.sim import SimAdapter, SimWorld
-from milipy.state import Player, Position
+from milipy.state import GameSession, Player, Position
 from milipy.transport import WebSocketAdapter
 
 
@@ -222,11 +222,25 @@ class TestBotSimulator:
         with pytest.raises(CapabilityError):
             bot.throw_grenade()
         with pytest.raises(CapabilityError):
-            bot.punch()
-        with pytest.raises(CapabilityError):
             bot.chat.send("hi")
         with pytest.raises(CapabilityError):
             bot.pickup()
+        # ``punch`` requires ``gesture_input``, which the default simulator
+        # reports as available, so it must NOT raise there.
+        bot.punch()
+        await bot.disconnect_async()
+
+    @pytest.mark.asyncio
+    async def test_punch_raises_when_gesture_input_unavailable(self):
+        world = SimWorld(enemies=0)
+        adapter = SimAdapter(
+            world,
+            capabilities={"screen_capture": True, "gesture_input": False},
+        )
+        bot = Bot(adapter)
+        await bot.connect_async()
+        with pytest.raises(CapabilityError):
+            bot.punch()
         await bot.disconnect_async()
 
     @pytest.mark.asyncio
@@ -248,6 +262,17 @@ class TestBotSimulator:
         snapshot = bot.state
         snapshot.tick = 99999
         assert bot.state.tick != 99999
+        await bot.disconnect_async()
+
+    @pytest.mark.asyncio
+    async def test_game_session_observed(self, bot):
+        bot, _, _ = bot
+        await bot.connect_async()
+        await asyncio.sleep(0.5)
+        # The simulator honestly reports UNKNOWN; the SDK must parse it.
+        assert bot.game_session in (GameSession.UNKNOWN, None)
+        # And propagate it into the state snapshot.
+        assert bot.state.game_session in (GameSession.UNKNOWN, None)
         await bot.disconnect_async()
 
     @pytest.mark.asyncio
@@ -301,6 +326,10 @@ class TestRealWebSocketHandshake:
         adapter = WebSocketAdapter(host, port)
         ack = await adapter.connect(lambda m: asyncio.sleep(0))
         assert ack["protocol"] == 1
+        for _ in range(20):
+            if state.received:
+                break
+            await asyncio.sleep(0.05)
         assert state.received
         first = __import__("json").loads(state.received[0])
         assert first["type"] == "hello"

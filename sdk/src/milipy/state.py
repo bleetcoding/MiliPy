@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 
@@ -154,6 +155,29 @@ class Capabilities:
         return out
 
 
+class GameSession(str, Enum):
+    """High-level game session state as observed by the bridge.
+
+    The bridge derives this from what it can *legitimately* observe (the
+    application's visible UI and screen content). Until the perception layer
+    actually supports fine-grained detection, the bridge reports ``UNKNOWN``;
+    ``NONE`` means Mini Militia is not running on the device at all.
+    """
+
+    NONE = "none"
+    """Mini Militia is not running on the Android device."""
+    UNKNOWN = "unknown"
+    """Mini Militia may be running, but the bridge cannot determine the screen."""
+    MAIN_MENU = "main_menu"
+    LAN_MENU = "lan_menu"
+    LOBBY_VISIBLE = "lobby_visible"
+    """A LAN lobby is visible on screen but the device has not joined."""
+    IN_LOBBY = "in_lobby"
+    """The device has joined a LAN lobby (observed from the lobby UI)."""
+    IN_GAME = "in_game"
+    GAME_OVER = "game_over"
+
+
 @dataclass
 class GameState:
     """A single point-in-time observation of the world.
@@ -170,6 +194,8 @@ class GameState:
     frame: dict[str, Any] | None = None
     screen_width: int | None = None
     screen_height: int | None = None
+    game_session: GameSession | None = None
+    """Current high-level game session state, if the bridge can observe it."""
 
     def snapshot(self) -> GameState:
         """Return a deep copy safe for handler mutation."""
