@@ -101,12 +101,13 @@ async def join_and_play(host: str, name: str, codec: MiniMilitiaCodec) -> None:
     on_tick.last_fire = 0.0
 
     try:
-        bot.connect()
-        logger.info("Connected to LAN host %s — waiting for lobby join...", host)
-        # The real join packet is codec-dependent; fire the scaffold trigger.
-        await asyncio.get_event_loop().run_in_executor(None, lambda: None)
-        joined.wait() if False else await asyncio.sleep(1)
-        logger.info("In match — combat loop is live (aim + fire on tick)")
+        await bot.connect_async()
+        logger.info("Connected to LAN host %s — waiting for lobby state...", host)
+        # Real join is codec-dependent: the Bot's tick loop is live once the
+        # codec decodes state frames. Until then, wait for codec validation.
+        if not codec.discovery_payload:
+            logger.info("Codec has no discovery payload yet — waiting for PCAP "
+                        "evidence. The bot is connected but cannot speak LAN.")
         await asyncio.sleep(60)  # play for a minute
     except CapabilityError as exc:
         logger.error("Cannot join yet: %s", exc)
@@ -157,7 +158,8 @@ def main() -> None:
         return
 
     try:
-        asyncio.run(join_and_play(args.host, args.name, codec))
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(join_and_play(args.host, args.name, codec))
     except CapabilityError:
         logger.error(
             "LAN codec not validated yet — join not possible without a real PCAP. "
