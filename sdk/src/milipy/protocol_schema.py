@@ -21,7 +21,7 @@ PROTOCOL_VERSION: int = 1
 CLIENT_ID: str = "milipy"
 
 #: SDK version sent in the ``hello`` handshake. Bumped with releases.
-CLIENT_VERSION: str = "0.1.0"
+CLIENT_VERSION: str = "0.2.0"
 
 # ---------------------------------------------------------------------------
 # Message types
@@ -67,7 +67,7 @@ ERR_CAPTURE_UNAVAILABLE: str = "capture_unavailable"
 ERR_INTERNAL: str = "internal_error"
 
 # ---------------------------------------------------------------------------
-# Capability flags
+# Capability flags — rich reporting (protocol v1.1 extension)
 # ---------------------------------------------------------------------------
 
 #: Boolean feature flags the bridge reports during handshake.
@@ -79,6 +79,36 @@ ALL_CAPABILITIES: tuple[str, ...] = (
     "settings_read",
     "settings_write",
 )
+
+# ---------------------------------------------------------------------------
+# Message identification (v1.1 extension)
+# ---------------------------------------------------------------------------
+
+#: Optional ``id`` field prefix for action messages. When present, the
+#: bridge echoes it in the matching ``ack`` so the SDK can pair responses
+#: with requests even on a congested socket.
+ACTION_ID_PREFIX: str = "action-"
+
+#: Acknowledgement statuses the bridge may return for an action ``id``.
+ACK_ACCEPTED: str = "accepted"
+ACK_REJECTED: str = "rejected"
+
+VALID_ACK_STATUSES: tuple[str, ...] = (ACK_ACCEPTED, ACK_REJECTED)
+
+# ---------------------------------------------------------------------------
+# Observation tuning (v1.1 extension)
+# ---------------------------------------------------------------------------
+
+#: Bridge-side knobs for the capture pipeline, exposed through the
+#: ``set_capture`` action and the bridge settings. These deliberately do
+#: NOT model bandwidth numbers — the bridge enforces its own backpressure
+#: (latest-frame semantics with a bounded outbound queue).
+CAPTURE_MAX_FPS: int = 30
+CAPTURE_DEFAULT_FPS: int = 10
+CAPTURE_MIN_JPEG_QUALITY: int = 40
+CAPTURE_MAX_JPEG_QUALITY: int = 95
+CAPTURE_DEFAULT_JPEG_QUALITY: int = 70
+CAPTURE_MAX_FRAME_BYTES: int = 1024 * 1024  # 1 MiB hard cap on a frame
 
 # ---------------------------------------------------------------------------
 # Action names and their validation rules
@@ -130,7 +160,7 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     # Capture
     "set_capture": ActionSpec(
         "screen_capture",
-        ("enabled", "frame_rate", "include_frame"),
+        ("enabled", "frame_rate", "include_frame", "jpeg_quality"),
         ("enabled",),
         {},
     ),
@@ -202,3 +232,25 @@ SCREEN_REF_HEIGHT: int = 720
 #: Pairing code length and character set.
 PAIRING_LENGTH: int = 6
 PAIRING_ALPHABET: str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # unambiguous chars
+
+# ---------------------------------------------------------------------------
+# Rich capability status (v1.1 extension)
+# ---------------------------------------------------------------------------
+
+#: Rich capability states. A capability can be *implemented* in the bridge
+#: without being *available* (e.g., gesture_input requires the accessibility
+#: service to be enabled), and being *available* is not the same as being
+#: *validated* against a real Mini Militia device.
+CAP_AVAILABLE: str = "available"
+CAP_UNAVAILABLE: str = "unavailable"
+CAP_PERMISSION_REQUIRED: str = "permission_required"
+CAP_UNSUPPORTED: str = "unsupported"
+CAP_NOT_VALIDATED: str = "not_validated"
+
+CAP_STATES: tuple[str, ...] = (
+    CAP_AVAILABLE,
+    CAP_UNAVAILABLE,
+    CAP_PERMISSION_REQUIRED,
+    CAP_UNSUPPORTED,
+    CAP_NOT_VALIDATED,
+)

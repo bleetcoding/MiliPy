@@ -21,6 +21,22 @@ object CapabilitiesReport {
 
     fun supports(feature: String): Boolean = all().getOrElse(feature) { false }
 
+    /**
+     * Protocol v1.1 extension: capabilities as rich status objects.
+     *
+     * Each entry is `{"state": "available" | "unavailable", "validated_on_device": false}`.
+     * Boolean values remain valid in the protocol; rich objects carry the
+     * honest distinction between *mechanism available* and *not yet proven on
+     * a real Mini Militia device*. See docs/device-validation.md.
+     */
+    fun richAll(): Map<String, Map<String, Any>> =
+        all().mapValues { (_, available) ->
+            mapOf(
+                "state" to (if (available) "available" else "unavailable"),
+                "validated_on_device" to false,
+            )
+        }
+
     /** Device information for the `device` block of `hello_ack`. */
     fun deviceInfo(): Map<String, Any?> {
         return mapOf(

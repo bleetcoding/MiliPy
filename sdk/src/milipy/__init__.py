@@ -37,13 +37,14 @@ from .events import EventEmitter
 from .protocol import CapabilityError, ProtocolError
 from .protocol_schema import PROTOCOL_VERSION
 from .sim import SimAdapter, SimWorld
-from .state import Capabilities, GameSession, GameState, Player, Position, Vector, Weapon
+from .state import CapabilityStatus, Capabilities, GameSession, GameState, Player, Position, Vector, Weapon
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "Bot",
     "Capabilities",
     "CapabilityError",
+    "CapabilityStatus",
     "EventEmitter",
     "GameSession",
     "GameState",

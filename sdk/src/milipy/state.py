@@ -19,6 +19,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .protocol_schema import (
+    CAP_AVAILABLE,
+    CAP_NOT_VALIDATED,
+    CAP_PERMISSION_REQUIRED,
+    CAP_STATES,
+    CAP_UNAVAILABLE,
+    CAP_UNSUPPORTED,
+)
+
 
 @dataclass(frozen=True)
 class Position:
@@ -111,7 +120,17 @@ class Player:
 
 @dataclass(frozen=True)
 class Capabilities:
-    """Feature flags reported by the bridge during handshake."""
+    """Feature flags reported by the bridge during handshake.
+
+    Backwards-compatible with the protocol v1 boolean flags while also
+    accepting the richer v1.1 objects::
+
+        {"screen_capture": true}                     # v1 boolean
+        {"screen_capture": {"state": "available"}}    # v1.1 rich status
+
+    The ergonomic boolean API stays: ``caps.screen_capture`` is still a
+    ``bool``. Rich detail is reachable through ``caps.status("screen_capture")``.
+    """
 
     screen_capture: bool = False
     gesture_input: bool = False
@@ -120,6 +139,21 @@ class Capabilities:
     settings_read: bool = False
     settings_write: bool = False
     _extra: dict[str, bool] = field(default_factory=dict, repr=False)
+
+    @staticmethod
+    def _parse_flag(value: Any) -> tuple[bool, CapabilityStatus]:
+        if isinstance(value, dict):
+            state = value.get("state")
+            if isinstance(state, str) and state in CAP_STATES:
+                return (
+                    state == CAP_AVAILABLE,
+                    CapabilityStatus(
+                        state=state,
+                        validated_on_device=bool(value.get("validated_on_device", False)),
+                    ),
+                )
+            return False, CapabilityStatus.unavailable()
+        return bool(value), CapabilityStatus.from_bool(bool(value))
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> Capabilities:
@@ -131,8 +165,14 @@ class Capabilities:
             "settings_read",
             "settings_write",
         }
-        kwargs = {key: bool(value) for key, value in raw.items() if key in known}
-        extra = {key: bool(value) for key, value in raw.items() if key not in known}
+        kwargs: dict[str, bool] = {}
+        extra: dict[str, bool] = {}
+        for key, value in raw.items():
+            flag, _status = cls._parse_flag(value)
+            if key in known:
+                kwargs[key] = flag
+            else:
+                extra[key] = flag
         return cls(**kwargs, _extra=extra)
 
     def supports(self, feature: str) -> bool:
@@ -140,6 +180,18 @@ class Capabilities:
         if feature in vars(self):
             return bool(getattr(self, feature))
         return bool(self._extra.get(feature))
+
+    def status(self, feature: str) -> CapabilityStatus:
+        """Rich status for a capability flag — never silently fake data.
+
+        Unknown feature names return ``CapabilityStatus.unsupported()`` so
+        callers can distinguish *not implemented* from *unavailable*.
+        """
+        if feature in vars(self):
+            return CapabilityStatus.from_bool(bool(getattr(self, feature)))
+        if feature in self._extra:
+            return CapabilityStatus.from_bool(bool(self._extra[feature]))
+        return CapabilityStatus.unsupported()
 
     def to_dict(self) -> dict[str, bool]:
         """Serialize to the same shape the bridge uses."""
@@ -153,6 +205,80 @@ class Capabilities:
         }
         out.update(self._extra)
         return out
+
+
+@dataclass(frozen=True)
+class CapabilityStatus:
+    """Rich capability state — more informative than a bare boolean.
+
+    The five states express exactly what the bridge knows about each
+    feature, so the SDK never confuses *implemented* with *available* with
+    *validated against a real device*. A capability is only usable for
+    actions when ``is_available`` is true; ``is_validated`` stays false
+    until a real Mini Militia device test has proven it (see
+    ``docs/device-validation.md``).
+    """
+
+    state: str
+    """One of the ``CAP_*`` constants from :mod:`milipy.protocol_schema`."""
+
+    def __post_init__(self) -> None:
+        if self.state not in CAP_STATES:
+            raise ValueError(f"unknown capability state: {self.state!r}")
+
+    @property
+    def is_available(self) -> bool:
+        return self.state == CAP_AVAILABLE
+
+    @property
+    def needs_permission(self) -> bool:
+        return self.state in (CAP_PERMISSION_REQUIRED,)
+
+    @property
+    def is_validated(self) -> bool:
+        """True only when the capability has been proven on a real device."""
+        return self.state == CAP_AVAILABLE and self.validated_on_device
+
+    validated_on_device: bool = False
+
+    @classmethod
+    def available(cls, validated: bool = False) -> CapabilityStatus:
+        return cls(state=CAP_AVAILABLE, validated_on_device=validated)
+
+    @classmethod
+    def unavailable(cls) -> CapabilityStatus:
+        return cls(state=CAP_UNAVAILABLE)
+
+    @classmethod
+    def permission_required(cls) -> CapabilityStatus:
+        return cls(state=CAP_PERMISSION_REQUIRED)
+
+    @classmethod
+    def unsupported(cls) -> CapabilityStatus:
+        return cls(state=CAP_UNSUPPORTED)
+
+    @classmethod
+    def not_validated(cls) -> CapabilityStatus:
+        return cls(state=CAP_NOT_VALIDATED)
+
+    @classmethod
+    def from_bool(cls, value: bool) -> CapabilityStatus:
+        """Backwards-compatible mapping of the v1 boolean capability flag."""
+        return cls.available(validated=False) if value else cls.unavailable()
+
+    def __bool__(self) -> bool:
+        return self.is_available
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, CapabilityStatus):
+            return self.state == other.state
+        if isinstance(other, bool):
+            return self.is_available == other
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        validated = " validated" if self.validated_on_device else ""
+        return f"CapabilityStatus({self.state}{validated})"
 
 
 class GameSession(str, Enum):

@@ -11,7 +11,12 @@ from __future__ import annotations
 from typing import Any
 
 from .protocol import action_message, CapabilityError
-from .protocol_schema import VALID_DIRECTIONS
+from .protocol_schema import (
+    CAPTURE_MAX_FPS,
+    CAPTURE_MAX_JPEG_QUALITY,
+    CAPTURE_MIN_JPEG_QUALITY,
+    VALID_DIRECTIONS,
+)
 from .state import Player
 
 
@@ -65,19 +70,43 @@ class ActionBuilder:
     # -- capture ------------------------------------------------------------
 
     def set_capture(
-        self, enabled: bool, frame_rate: int | None = None, include_frame: bool | None = None
+        self,
+        enabled: bool,
+        frame_rate: int | None = None,
+        include_frame: bool | None = None,
+        jpeg_quality: int | None = None,
     ) -> tuple[str, dict[str, Any]]:
+        """Configure the capture pipeline.
+
+        ``frame_rate`` and ``jpeg_quality`` are clamped to the bridge's
+        published bounds; values above ``CAPTURE_MAX_FPS`` are rejected
+        rather than silently downgraded so the caller's intent is never
+        silently altered.
+        """
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be a boolean")
         payload: dict[str, Any] = {"enabled": enabled}
         if frame_rate is not None:
-            if not isinstance(frame_rate, int) or frame_rate < 0:
-                raise ValueError("frame_rate must be a non-negative integer")
+            if not isinstance(frame_rate, int) or not (0 <= frame_rate <= CAPTURE_MAX_FPS):
+                raise ValueError(
+                    f"frame_rate must be an integer in [0, {CAPTURE_MAX_FPS}], "
+                    f"got {frame_rate!r}"
+                )
             payload["frame_rate"] = frame_rate
         if include_frame is not None:
             if not isinstance(include_frame, bool):
                 raise ValueError("include_frame must be a boolean")
             payload["include_frame"] = include_frame
+        if jpeg_quality is not None:
+            if not isinstance(jpeg_quality, int) or not (
+                CAPTURE_MIN_JPEG_QUALITY <= jpeg_quality <= CAPTURE_MAX_JPEG_QUALITY
+            ):
+                raise ValueError(
+                    f"jpeg_quality must be an integer in "
+                    f"[{CAPTURE_MIN_JPEG_QUALITY}, {CAPTURE_MAX_JPEG_QUALITY}], "
+                    f"got {jpeg_quality!r}"
+                )
+            payload["jpeg_quality"] = jpeg_quality
         return ("set_capture", payload)
 
     def request_state(self) -> tuple[str, dict[str, Any]]:

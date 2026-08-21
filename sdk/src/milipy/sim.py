@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .events import EventEmitter
+from .perception import Frame, FrameSource
 from .transport import BridgeAdapter
 from .protocol_schema import (
     ACTION_SPECS,
@@ -273,7 +274,10 @@ class SimAdapter(BridgeAdapter):
         request_id = message.get("request_id")
         await self._apply_action(action, message)
         if request_id is not None:
-                await self._notify({"type": "ack", "request_id": request_id, "action": action})
+            await self._notify({"type": "ack", "request_id": request_id, "action": action, "status": "accepted"})
+        action_id = message.get("id")
+        if action_id is not None and request_id != action_id:
+            await self._notify({"type": "ack", "id": action_id, "action": action, "status": "accepted"})
 
     async def close(self) -> None:
         if self._tick_task is not None and not self._tick_task.done():
@@ -325,3 +329,39 @@ class SimAdapter(BridgeAdapter):
             self._settings[str(payload["key"])] = payload["value"]
         elif action == "ping":
             pass
+
+
+class SimFrameSource(FrameSource):
+    """A :class:`FrameSource` backed by a :class:`SimWorld`.
+
+    Feeds the perception pipeline with synthetic placeholder frames, one per
+    world tick. Real deployments will replace this with a WebSocket frame
+    source, but the pipeline contract stays identical.
+    """
+
+    def __init__(self, world: SimWorld) -> None:
+        self._world = world
+        self._history: list[Frame] = []
+
+    def latest(self) -> Frame | None:
+        return self._history[-1] if self._history else None
+
+    def frames_since(self, timestamp_ms: int) -> list[Frame]:
+        return [frame for frame in self._history if frame.timestamp_ms >= timestamp_ms]
+
+    def record(self, timestamp_ms: int | None = None) -> Frame:
+        """Produce and store one synthetic frame — call once per world tick."""
+        import base64
+
+        data = base64.b64decode(SYNTHETIC_JPEG_B64)
+        frame = Frame(
+            data=data,
+            timestamp_ms=int(time.time() * 1000) if timestamp_ms is None else timestamp_ms,
+            width=self._world.width,
+            height=self._world.height,
+        )
+        self._history.append(frame)
+        # Keep a bounded history to mimic latest-frame semantics.
+        if len(self._history) > 120:
+            self._history = self._history[-120:]
+        return frame

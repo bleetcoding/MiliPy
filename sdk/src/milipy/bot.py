@@ -140,6 +140,7 @@ class Bot:
         self._actions = ActionBuilder(self._capabilities.to_dict())
         self._state = GameState(tick=0)
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._action_counter: int = 0
         self._loop: asyncio.AbstractEventLoop | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._pairing_token = pairing_token or os.environ.get("MILIPY_PAIRING")
@@ -311,8 +312,23 @@ class Bot:
         else:
             self._loop.run_until_complete(self._send_action(name, payload))
 
+    def _next_action_id(self) -> str:
+        """Unique action identifier, e.g. ``"action-7"``.
+
+        The bridge echoes it verbatim on the matching ``ack``/``error``, so
+        listeners can correlate asynchronous confirmations with the action
+        they were sent for. See protocol spec §3.4.
+        """
+        self._action_counter += 1
+        return f"action-{self._action_counter}"
+
     async def _send_action(self, name: str, payload: dict[str, Any]) -> None:
-        message: dict[str, Any] = {"type": "action", "action": name, **payload}
+        message: dict[str, Any] = {
+            "type": "action",
+            "action": name,
+            "id": self._next_action_id(),
+            **payload,
+        }
         try:
             await self._adapter.send(message)
         except Exception as exc:  # noqa: BLE001
@@ -426,9 +442,18 @@ class Bot:
                 future = self._pending.pop(request_id)
                 if not future.done():
                     future.set_result(message)
+            status = message.get("status")
+            action_name = message.get("action")
+            if msg_type == MSG_ACK and status == "rejected":
+                self._events.emit("action_rejected", action=action_name, message=message.get("message"))
+            elif action_name is not None:
+                self._events.emit("action_ack", action=action_name, status=status or "accepted")
             return
         if msg_type == MSG_ERROR:
             self._events.emit("bridge_error", code=message.get("code"), message=message.get("message"))
+            action_id = message.get("id")
+            if action_id is not None:
+                self._events.emit("action_rejected", action=None, message=message.get("message"))
             return
         logger.debug("Unhandled inbound message type: %s", msg_type)
 

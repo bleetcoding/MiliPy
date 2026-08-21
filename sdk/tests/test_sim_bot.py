@@ -367,3 +367,77 @@ class TestRealWebSocketHandshake:
             adapter = WebSocketAdapter(h, p)
             with pytest.raises(Exception):  # noqa: BLE001
                 await adapter.connect(lambda m: asyncio.sleep(0), max_reconnect_attempts=1, timeout=2.0)
+
+
+# ---------------------------------------------------------------------------
+# Action ids and ack events (protocol v1.1 extension)
+# ---------------------------------------------------------------------------
+
+
+class TestActionIds:
+    @pytest.mark.asyncio
+    async def test_action_ids_are_unique(self, bot):
+        """Every outbound action carries a unique id."""
+        bot, world, _ = bot
+        await bot.connect_async()
+        sent: list[dict[str, str]] = []
+        original = bot._adapter.send
+
+        async def recording_send(message: dict):
+            sent.append(message)
+            await original(message)
+
+        with patch.object(bot._adapter, "send", side_effect=recording_send):
+            bot.move("left")
+            bot.move("right")
+            bot.stop_movement()
+            # Flush the scheduled send tasks synchronously to be independent of
+            # which event loop the synchronous dispatch path targets.
+            for _ in range(20):
+                await asyncio.sleep(0)
+        ids = [m["id"] for m in sent if m.get("type") == "action"]
+        assert len(ids) >= 3
+        assert len(set(ids)) == len(ids), "action ids must be unique"
+        assert all(i.startswith("action-") for i in ids)
+        await bot.disconnect_async()
+
+    @pytest.mark.asyncio
+    async def test_sim_echoes_id_in_ack(self):
+        """The simulator echoes the action id in its ack/reply."""
+        world = SimWorld()
+        adapter = SimAdapter(world)
+        replies: list[dict] = []
+        await adapter.connect(replies.append)
+        await adapter.send({"type": "action", "id": "action-42", "action": "ping"})
+        await asyncio.sleep(0.1)
+        await adapter.close()
+        assert any(r.get("type") == "ack" and r.get("id") == "action-42" for r in replies)
+
+    @pytest.mark.asyncio
+    async def test_action_ack_event_emitted(self, bot):
+        bot, _, _ = bot
+        await bot.connect_async()
+        acks: list[dict[str, str]] = []
+        bot.on("action_ack")(lambda action, status: acks.append({"action": action, "status": status}))
+        bot.move("left")
+        await asyncio.sleep(0.4)
+        await bot.disconnect_async()
+        moves = [a for a in acks if a["action"] == "move"]
+        assert moves, "expected an action_ack event for the move action"
+        assert moves[0]["status"] == "accepted"
+
+    @pytest.mark.asyncio
+    async def test_bridge_side_unsupported_capability_emits_error(self):
+        """A bridge-side unsupported-capability error reaches the SDK as a bridge_error event."""
+        world = SimWorld(enemies=0)
+        adapter = SimAdapter(world)  # default capabilities, no local raise
+        bot = Bot(adapter)
+        await bot.connect_async()
+        errors: list[dict] = []
+        bot.on("bridge_error")(lambda code, message: errors.append({"code": code}))
+        # Simulate what a real bridge sends when an action reaches it despite
+        # the SDK's pre-validation (e.g. race with a capability revocation).
+        await adapter._notify({"type": "error", "code": "unsupported_capability", "id": "action-1"})
+        await asyncio.sleep(0.1)
+        assert any(e["code"] == "unsupported_capability" for e in errors)
+        await bot.disconnect_async()

@@ -100,3 +100,92 @@ Then: phase 6 docs (README with architecture/topologies, architecture.md, docs/t
 - Termux notes for guide: Termux python 3.10+ (check current: python3.11/3.12); pkg install python git clang build-essential (websockets has C dep? it uses no C ext, pure wheels mostly fine); use `pkg install python-websockets` OR pip install websockets; recommend pip. git clone into $HOME; cd milipy && pip install -e sdk.
 - Real-network run: bridge runs on same phone or another phone; on same phone localhost 127.0.0.1:8765 works (bridge binds 0.0.0.0). Pairing token from app UI. env vars: MILIPY_HOST, MILIPY_PORT, MILIPY_PAIRING.
 - Still to do: (1) write docs/termux.md guide, (2) mention in README, (3) commit+push, (4) deliver instructions to user.
+
+
+## Audit task (ChatGPT 16-point list) — progress tracker
+User attachment /home/ubuntu/upload/pasted_content.txt contains the full 16-point audit brief. Key asks: validation levels (IMPLEMENTED / ANDROID-MECHANISM-TESTED / MINI-MILITIA-REAL-DEVICE-VALIDATED); docs/device-validation.md matrix (empty results, no faking); coordinate calibration (screen_to_normalized, normalized_to_screen, game_to_screen, screen_to_input + tests); perception interfaces (FrameSource, PerceptionProvider, GameStateProvider, PlayerDetector, PlayerTracker) NOT in WebSocket layer; player tracking with provenance; frame-rate/bandwidth control + backpressure (latest-frame semantics, bounded queue); action IDs with acks ({type:action,id:action-123},{type:ack,id:action-123,status:accepted}); rich capability states (available/unavailable/permission_required/unsupported/not_validated) with validated field; keep game session enum, separate observed/inferred/unknown; docs/android-compatibility.md; no combat intelligence; push + commit hash + tested-vs-unverified report.
+
+### Done so far (audit phase):
+- APK published as GitHub Release v0.1.0: https://github.com/bleetcoding/MiliPy/releases/tag/v0.1.0 asset https://github.com/bleetcoding/MiliPy/releases/download/v0.1.0/app-debug.apk (verified curl works)
+- sdk/src/milipy/coords.py NEW: SpaceConfig, Orientation, ViewportRect, CalibrationSource; methods screen_to_normalized, normalized_to_screen, screen_to_capture, capture_to_screen, screen_to_input (cw rotation steps), input_to_screen (inverse, x,y=(w-1-y,x)), game_to_screen alias, capture_to_normalized, normalized_to_capture, input_to_normalized
+- sdk/tests/test_coords.py NEW: 19 tests passing (landscape/portrait/aspect/clamp/viewport offset/letterbox/capture-scale/rotation round-trips)
+- protocol_schema.py: added CAP_AVAILABLE/CAP_UNAVAILABLE/CAP_PERMISSION_REQUIRED/CAP_UNSUPPORTED/CAP_NOT_VALIDATED + CAP_STATES; ACTION_ID_PREFIX="action-", ACK_ACCEPTED="accepted", ACK_REJECTED="rejected", VALID_ACK_STATUSES; CAPTURE_MAX_FPS=30, CAPTURE_DEFAULT_FPS=10, MIN/MAX/DEFAULT JPEG quality 40/95/70, CAPTURE_MAX_FRAME_BYTES=1MiB; set_capture now allows jpeg_quality
+- state.py: CapabilityStatus dataclass (state, validated_on_device, is_available, needs_permission, is_validated, from_bool, __bool__); Capabilities._parse_flag/from_dict handles rich dicts; Capabilities.status(feature) returns CapabilityStatus (unknown→unsupported); CapabilityStatus defined AFTER Capabilities in file but referenced only at call time — VERIFY no NameError (class-method bodies resolve at call time, OK)
+- actions.py: set_capture validates jpeg_quality bounds and frame_rate capped at CAPTURE_MAX_FPS
+
+### Still TODO:
+1. Export CapabilityStatus from __init__.py
+2. bot.py: support action id generation + pending ack tracking (emit action_ack event); WebSocketAdapter assign ids
+3. sim.py: emit ack with id when action accepted; handle jpeg_quality in set_capture
+4. transport.py: action_message should accept/forward optional id field (protocol.py action_message builds {"type":action,"action":..., optionally "id":...})
+5. Protocol doc: add id field to action/ack envelopes + capabilities rich state + capture tuning; bump notes (keep version 1 major, note v1.1 extensions)
+6. sdk/src/milipy/perception.py NEW: FrameSource, PerceptionProvider, GameStateProvider, PlayerDetector, PlayerTracker interfaces (ABC) + BaselinePerceptionProvider stub
+7. bridge: Kotlin — add id echo in acks, jpeg_quality setting, bounded outbound queue (latest-frame semantics: drop stale frames when queue full), rich capabilities in hello_ack
+8. docs/device-validation.md (matrix, empty results), docs/android-compatibility.md, update README validation levels table, roadmap
+9. Tests: run full suite + lint; Android build; commit hash report; tested vs unverified
+
+### Env notes:
+- Gradle: $HOME/.sdkman/candidates/gradle/8.9/bin/gradle, ANDROID_HOME=$HOME/android-sdk, JDK 21 preinstalled; build: compileDebugKotlin / assembleDebug in /home/ubuntu/milipy/bridge
+- Python tests: cd sdk && python3 -m pytest (84 tests baseline); smoke.py; example --simulate
+- GitHub user: bleetcoding; repo MiliPy public; main branch
+
+
+## Audit progress — round 2 (post-compaction notes)
+### Completed since round-1 tracker:
+- CapabilityStatus exported from __init__ (0.2.0 version now in protocol_schema.py CLIENT_VERSION and __init__.py __version__)
+- sdk/src/milipy/perception.py: Frame, FrameSource, Detection (category/nx/ny/confidence/source/frame_timestamp_ms), PlayerDetector, PlayerTracker, PerceptionProvider, GameStateProvider ABCs + BaselineDetector/BaselineTracker/BaselinePerceptionProvider
+- sim.py: SimFrameSource(FrameSource) with record()/latest()/frames_since(), 120-frame bounded history
+- sdk/tests/test_perception.py: 9 tests all passing
+- TOTAL TESTS NOW: 112 passing
+- docs/device-validation.md: full matrix + manual validation procedure, all validation cells intentionally empty
+- docs/android-compatibility.md: APIs, minSdk 26, compileSdk 34, permissions table, foreground service types, OEM limitations marked UNVERIFIED
+- protocol/protocol.md updated: action `id` field + ack with status accepted/rejected; capabilities rich state documented (§7.1); set_capture jpeg_quality (v1.1); frame-rate bounds [0,30], quality [40,95], latest-frame backpressure doc; hello_ack capabilities example shows rich objects
+
+### Still TODO for this audit:
+1. bot.py: generate action ids (prefix "action-", counter) in _send_action; handle ack messages with id/request_id/status — emit "action_ack" event; also emit "action_rejected"/"action_failed" events
+2. protocol.py: action_message may need id field — check encode; parse_message should pass through id
+3. sim.py SimAdapter: echo id in ack; handle jpeg_quality in set_capture (world.jpeg_quality)
+4. Kotlin bridge: add id echo in acks (MiliPyService.kt), rich capabilities in hello_ack (CapabilitiesReport.kt already reports booleans — make it emit rich dict), jpeg_quality config in BridgeSettings, bounded outbound queue latest-frame semantics in observation loop, protocol_error for unsupported_version (already exists)
+5. README: add validation-level table/links to device-validation.md + android-compatibility.md
+6. roadmap.md: mention audit additions
+7. tests: run lint (python3 -m py_compile + ruff if available), Android gradle build (assembleDebug)
+8. Commit + push, report commit hash + tested vs unverified
+
+### Key env facts:
+- Gradle: sdkman gradle 8.9; ANDROID_HOME=$HOME/android-sdk; build from /home/ubuntu/milipy/bridge
+- Tests: cd sdk && python3 -m pytest (112 tests)
+- GitHub repo: bleetcoding/MiliPy public, main branch; gh CLI logged in
+- Release v0.1.0 exists with app-debug.apk asset
+
+
+## Status checkpoint (before final push)
+DONE so far in audit round 2:
+- Tests: 116 passing (incl. 9 perception, 4 action-id/ack tests)
+- SDK 0.2.0: perception.py (FrameSource/PerceptionProvider/GameStateProvider/PlayerDetector/PlayerTracker + Baseline*), coords.py (calibration), CapabilityStatus rich states, action ids (bot._send_action adds "id": action-N, sim echoes), ack status accepted/rejected events (action_ack, action_rejected, bridge_error on id-bearing errors), jpeg_quality bounds [40,95], frame_rate [0,30]
+- protocol.md renumbered + documented: action id + ack status, rich capability states (§7.1), capture tuning (§4.9), backpressure latest-frame doc
+- docs/device-validation.md + docs/android-compatibility.md written
+- example bot verified prints "Bot has spawned" + player_seen
+- APK already published at https://github.com/bleetcoding/MiliPy/releases/download/v0.1.0/app-debug.apk
+
+REMAINING:
+1. Kotlin bridge: add id echo in ack (MiliPyService.kt), rich capabilities dict in hello_ack (CapabilitiesReport.kt emits booleans -> emit {"state":"available"|"unavailable"} dict), jpeg_quality setting handling
+2. README: link new docs (device-validation, android-compatibility); bump version mentions 0.2.0; maybe add validation-level table
+3. roadmap.md: add audit items
+4. Android build: cd bridge && export ANDROID_HOME=$HOME/android-sdk PATH=$ANDROID_HOME/platform-tools:$PATH && PATH=$HOME/.gradle/wrapper... use /home/ubuntu/.gradle/wrapper/dists gradlew build or gradle (sdkman: source ~/.sdkman/bin/sdkman-init.sh; sdk use gradle 8.9) then assembleDebug; verify APK exists bridge/app/build/outputs/apk/debug/app-debug.apk; update release asset (delete old asset if needed via gh release edit --prerelease? use gh api to delete asset then upload new)
+5. Commit all + push; gh release update asset if APK changed
+6. Deliver report: commit hash, what tested (116 tests, build verified) vs unverified (everything real-device; perception actual detection; gesture zones; OEM behaviors)
+
+
+## Checkpoint 2 (bridge Kotlin updates done)
+DONE additional:
+- MiliPyService.kt: handleAction now echoes `id` in acks (with "status":"accepted"), errorEnvelope carries actionId param (id field), ping/disconnect unknown-type errors carry id. sendAck also includes status accepted.
+- CapabilitiesReport.kt: richAll() returns Map<String,Map<String,Any>> {state: available/unavailable, validated_on_device: false}; helloAck uses richAll()
+- SDK tests 116 passing; example bot verified (spawns, sees SimPlayer1/2)
+
+NEXT:
+1. Android build: cd /home/ubuntu/milipy/bridge && source ~/.sdkman/bin/sdkman-init.sh 2>/dev/null; sdk use gradle 8.9 2>/dev/null; export ANDROID_HOME=$HOME/android-sdk; ./gradlew assembleDebug (gradle wrapper at bridge/gradlew; if missing: gradle wrapper). Watch for Kotlin compile errors (richAll mapValues typing, .apply chain imports)
+2. APK path: bridge/app/build/outputs/apk/debug/app-debug.apk — if build succeeds, replace release asset: gh api DELETE repos/bleetcoding/MiliPy/releases/assets/<asset_id> (get id via gh api repos/bleetcoding/MiliPy/releases) then gh release upload-asset v0.1.0 --repo bleetcoding/MiliPy bridge/app/build/outputs/apk/debug/app-debug.apk (use gh api POST /repos/bleetcoding/MiliPy/releases/374148550/assets with label "application/vnd.android.package-archive")
+3. README: add links to docs/device-validation.md and docs/android-compatibility.md in docs section; mention 0.2.0
+4. roadmap.md: note audit additions (coords calibration, perception interfaces, rich caps, action ids, backpressure, validation matrix)
+5. git commit all + push main; verify with gh api repos/bleetcoding/MiliPy/commits/main --jq .sha (watch terminal escape mangling; redirect to file)
+6. Deliver final report: commit hash, repo public, APK URL, tested (116 tests, both builds) vs unverified (real-device everything)

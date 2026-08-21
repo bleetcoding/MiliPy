@@ -174,15 +174,27 @@ class MiliPyService : Service() {
             }
             when (message.optString("type")) {
                 Protocol.MSG_ACTION -> handleAction(message)
-                Protocol.Actions.PING ->
-                    session.sendAck(message.optString("request_id"), Protocol.Actions.PING)
+                Protocol.Actions.PING -> {
+                    val pingId = message.optString("id").takeIf { it.isNotEmpty() }
+                    if (pingId != null) session.sendOutbound(
+                        JSONObject().put("type", Protocol.MSG_ACK)
+                            .put("id", pingId).put("action", Protocol.Actions.PING)
+                            .put("status", "accepted").toString())
+                    else session.sendAck(message.optString("request_id"), Protocol.Actions.PING)
+                }
                 Protocol.Actions.DISCONNECT -> {
-                    session.sendAck(message.optString("request_id"), Protocol.Actions.DISCONNECT)
+                    val disconnectId = message.optString("id").takeIf { it.isNotEmpty() }
+                    if (disconnectId != null) session.sendOutbound(
+                        JSONObject().put("type", Protocol.MSG_ACK)
+                            .put("id", disconnectId).put("action", Protocol.Actions.DISCONNECT)
+                            .put("status", "accepted").toString())
+                    else session.sendAck(message.optString("request_id"), Protocol.Actions.DISCONNECT)
                     authorized = false
                 }
                 else -> session.sendOutbound(errorEnvelope(Protocol.ERR_MALFORMED,
                     "unknown message type '${message.optString("type")}'",
-                    message.optString("request_id").takeIf { it.isNotEmpty() }))
+                    message.optString("request_id").takeIf { it.isNotEmpty() },
+                    message.optString("id").takeIf { it.isNotEmpty() }))
             }
         }
         session.close()
@@ -204,11 +216,17 @@ class MiliPyService : Service() {
         }
         val error = dispatcher.execute(action, payload)
         val requestId = message.optString("request_id").takeIf { it.isNotEmpty() }
+        val actionId = message.optString("id").takeIf { it.isNotEmpty() }
         if (error != null) {
-            pendingOutbound.add(errorEnvelope(Protocol.ERR_UNSUPPORTED, error, requestId))
-        } else if (requestId != null) {
+            pendingOutbound.add(errorEnvelope(Protocol.ERR_UNSUPPORTED, error, requestId, actionId))
+        } else if (requestId != null || actionId != null) {
             pendingOutbound.add(JSONObject().put("type", Protocol.MSG_ACK)
-                .put("request_id", requestId).put("action", action).toString())
+                .apply {
+                    if (requestId != null) put("request_id", requestId)
+                    if (actionId != null) put("id", actionId)
+                    put("action", action)
+                    put("status", "accepted")
+                }.toString())
         }
         if (action == Protocol.Actions.GET_SETTINGS) {
             pendingOutbound.add(
@@ -228,7 +246,7 @@ class MiliPyService : Service() {
         put("protocol", Protocol.VERSION)
         put("bridge_version", Protocol.BRIDGE_VERSION)
         put("bridge_id", "MiliPyBridge")
-        put("capabilities", JSONObject(CapabilitiesReport.all()))
+        put("capabilities", CapabilitiesReport.richAll())
         put("screen", JSONObject().apply {
             put("width", ScreenInfo.width())
             put("height", ScreenInfo.height())
@@ -241,12 +259,18 @@ class MiliPyService : Service() {
         })
     }.toString()
 
-    private fun errorEnvelope(code: String, message: String, requestId: String?): String =
+    private fun errorEnvelope(
+        code: String,
+        message: String,
+        requestId: String?,
+        actionId: String? = null,
+    ): String =
         JSONObject().apply {
             put("type", Protocol.MSG_ERROR)
             put("code", code)
             put("message", message)
             if (requestId != null) put("request_id", requestId)
+            if (actionId != null) put("id", actionId)
         }.toString()
 
     private fun parseMessage(text: String): JSONObject? = try {
@@ -302,7 +326,7 @@ private suspend fun WebSocketSession.sendAck(requestId: String?, action: String)
     if (requestId.isNullOrEmpty()) return
     sendOutbound(
         JSONObject().put("type", Protocol.MSG_ACK)
-            .put("request_id", requestId).put("action", action).toString()
+            .put("request_id", requestId).put("action", action).put("status", "accepted").toString()
     )
 }
 
