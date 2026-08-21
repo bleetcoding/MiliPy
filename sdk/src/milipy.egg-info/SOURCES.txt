@@ -1,0 +1,15 @@
+pyproject.toml
+src/milipy/__init__.py
+src/milipy/actions.py
+src/milipy/bot.py
+src/milipy/events.py
+src/milipy/protocol.py
+src/milipy/protocol_schema.py
+src/milipy/sim.py
+src/milipy/state.py
+src/milipy/transport.py
+src/milipy.egg-info/PKG-INFO
+src/milipy.egg-info/SOURCES.txt
+src/milipy.egg-info/dependency_links.txt
+src/milipy.egg-info/requires.txt
+src/milipy.egg-info/top_level.txt
