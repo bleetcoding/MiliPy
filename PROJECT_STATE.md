@@ -302,3 +302,27 @@ as an ordinary LAN client/player.
 - Verified: fresh venv install → milipy 0.4.0 imports; 124 pytest pass; first_bot.py --simulate runs showing Bot has spawned + enemy positions.
 - Release v0.4.0 created: https://github.com/bleetcoding/MiliPy/releases/tag/v0.4.0 (APK = same v0.3.0 build, notes explain).
 - Pending user action: upload captures (idle/lobby/movement/firing/death/grenade) — next round will analyze per capture.py + analyze.py workflow and start OBSERVED section of protocol/lan-protocol-research.md.
+
+
+### Round 6 progress (user capture session — LIVE)
+User is actively trying to capture from unrooted Termux. State of affairs:
+- User's phone pair: Phone 1 (HOST, Mini Militia LAN host) at 192.168.1.128 on home Wi-Fi; Phone 2 (bot/Termux) also on 192.168.1.x. Ping works between them.
+- capture.py (raw AF_PACKET) failed on Termux as expected (needs root). Fallback port-listener mode recorded nothing (expected — MM traffic isn't addressed to us).
+- probe.py (added, commit 4ee55a129ed78f4d8dbc0838520f1eebc1ec707a): sends UDP probes to guessed ports, records replies. Tested OK locally (listener self-test passed; fixed warmup timing bug).
+- User ran probe.py against 192.168.1.128 → 0 replies. Ping works, so MM host port not among guessed ports.
+- sweep.py JUST WRITTEN (protocol/research/sweep.py): full/concurrent UDP sweep, 65k ports in ~2 min, filters out 0-byte false positives. Local self-test PASSED: only the true listener port (44301 w/ banner) recorded among 17k swept. Fixed listener-bug in test (two sockets) and zero-byte loopback filtering.
+- NEXT: commit+push sweep.py, give user command: `python3 ~/MiliPy/protocol/research/sweep.py --host 192.168.1.128 --out ~/sweep1` while game running on both phones. Then analyze answered ports (banner hex, printable) → OBSERVED evidence → start protocol decoding.
+- Deliverables so far this round: easy_capture_guide.md, easy_capture_guide_v2.md, termux_quickstart.md (all at /home/ubuntu/). SDK 124 tests pass; repo pushed as far as probe.py commit; sweep.py NOT yet committed.
+- User instruction style: extremely simple copy-paste commands, no jargon.
+
+
+### Round 6 — sweep result & pivot design (Aug 21)
+The 65k-port sweep against 192.168.1.128 (game running) returned 0 answered ports. Ping works, so the network path is fine. Interpretation: MM's host is either (a) not bound to 192.168.1.128 for LAN (uses interface 0.0.0.0 or a broadcast socket), (b) only answers correctly formatted protocol packets, or (c) doesn't use UDP at all (unlikely but possible). Empty probes get silently dropped by a strict server.
+
+Next design options (in priority order):
+1. **Varied-payload passive "sponge"** (NEW TOOL idea, `research/sponge.py` or extend sweep with --payloads): send multiple plausible payloads per port — e.g. bytes that resemble Unity/lan-game handshakes we found in research (0x00, magic bytes, "MIL" etc are INFERRED guesses only), plus broadcast probes to 255.255.255.255 and 192.168.1.255 since LAN discovery is usually broadcast-based. Record replies to our port, and ALSO record anything that arrives on our listener port while we broadcast (passive).
+2. **Broadcast sweep**: MM LAN discovery almost certainly uses broadcast (LAN game lists nearby hosts). Send discovery-shaped broadcasts on candidate ports; listen for any host answer.
+3. **Silent-protocol detection**: if replies still zero, MM's server may only accept exact-format packets — we can't guess format without pcap; pivot to (a) checking if the host phone has tcpdump via shizuku/lADB, (b) using a Linux VM/PC approach, or (c) the VPN-capture path on the bot phone itself (Termux can run an in-app VPN via apps like PCAPdroid — open-source Android app that does exactly this WITHOUT root and exports pcap). RECOMMEND PCAPdroid: install on HOST phone → capture → export pcap → upload. That is the highest-yield path since the host sees all traffic including the other client's join packets.
+4. PCAPdroid: https://github.com/emanuele-f/pcapdroid (Play Store + GitHub, F-Droid too). No root, works via VPNService, local pcap export.
+
+Delivered so far this round: probe.py (4ee55a1), sweep.py (6f14934). Guides at /home/ubuntu/easy_capture_guide*.md, /home/ubuntu/termux_quickstart.md.
